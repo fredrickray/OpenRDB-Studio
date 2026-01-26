@@ -7,9 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.9.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
