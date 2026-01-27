@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
 import { useConnectionStore, type Connection } from "@/stores/connectionStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +12,7 @@ interface ConnectionEditFormProps {
 }
 
 export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
+    const navigate = useNavigate()
     const { updateConnection, deleteConnection, setActiveConnection } = useConnectionStore()
     const [showPassword, setShowPassword] = useState(false)
     const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
@@ -48,8 +50,9 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
         setTestStatus('success')
     }
 
-    const handleSave = () => {
-        updateConnection(connection.id, formData)
+    const handleConnect = () => {
+        updateConnection(connection.id, { ...formData, status: 'connected' })
+        navigate('/workspace')
     }
 
     const handleDelete = () => {
@@ -196,7 +199,7 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
 
                     {/* Action Buttons */}
                     <div className="flex items-center gap-3 pt-4">
-                        <Button onClick={handleSave} className="flex-1 h-11">
+                        <Button onClick={handleConnect} className="flex-1 h-11">
                             Connect Now
                         </Button>
                         <Button
