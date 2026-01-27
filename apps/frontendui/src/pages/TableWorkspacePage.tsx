@@ -2,31 +2,22 @@ import { WorkspaceSidebar } from "@/components/workspace/WorkspaceSidebar"
 import { DataTab } from "@/components/workspace/DataTab"
 import { StructureTab } from "@/components/workspace/StructureTab"
 import { StatusBar } from "@/components/workspace/StatusBar"
-import { QueryTabs } from "@/components/query/QueryTabs"
-import { QueryToolbar } from "@/components/query/QueryToolbar"
-import { SqlEditor } from "@/components/query/SqlEditor"
-import { ResultsPanel } from "@/components/query/ResultsPanel"
 import { useTableStore } from "@/stores/tableStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Database, RefreshCw, Plus, Search, Bell, Table, Columns, Code } from "lucide-react"
+import { Database, RefreshCw, Plus, Search, Bell, Settings, Table, Columns, Code } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
-export function QueryEditorPage() {
+export function TableWorkspacePage() {
     const { databases, selectedDatabase, selectedTable, activeTab, setActiveTab, refreshData, totalRows } = useTableStore()
     const navigate = useNavigate()
 
-    const handleDataTab = () => {
-        navigate('/workspace')
-        // Set tab after navigation to avoid race condition
-        setTimeout(() => setActiveTab('data'), 0)
-    }
+    const selectedDb = databases.find(db => db.name === selectedDatabase)
+    const selectedTbl = selectedDb?.tables.find(t => t.name === selectedTable)
 
-    const handleStructureTab = () => {
-        navigate('/workspace')
-        // Set tab after navigation to avoid race condition
-        setTimeout(() => setActiveTab('structure'), 0)
+    const handleSqlTab = () => {
+        navigate('/query')
     }
 
     return (
@@ -75,11 +66,18 @@ export function QueryEditorPage() {
                         <span className="text-muted-foreground">{selectedDatabase}</span>
                         <span className="text-muted-foreground">/</span>
                         <span className="font-semibold">{selectedTable}</span>
+                        <span className="text-muted-foreground text-xs ml-2">
+                            Estimated {totalRows.toLocaleString()} rows
+                        </span>
                     </div>
                     <div className="flex items-center gap-2">
                         <Button variant="outline" size="sm" onClick={refreshData}>
                             <RefreshCw className="w-3 h-3 mr-1" />
                             Refresh
+                        </Button>
+                        <Button size="sm">
+                            <Plus className="w-3 h-3 mr-1" />
+                            Insert Document
                         </Button>
                     </div>
                 </div>
@@ -88,29 +86,36 @@ export function QueryEditorPage() {
                 <div className="border-b border-border bg-card/30">
                     <div className="flex items-center gap-1 px-4">
                         <button
-                            onClick={handleDataTab}
+                            onClick={() => setActiveTab('data')}
                             className={cn(
                                 "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
-                                "border-transparent text-muted-foreground hover:text-foreground"
+                                activeTab === 'data'
+                                    ? "border-primary text-primary"
+                                    : "border-transparent text-muted-foreground hover:text-foreground"
                             )}
                         >
                             <Table className="w-4 h-4" />
                             Data
                         </button>
                         <button
-                            onClick={handleStructureTab}
+                            onClick={() => setActiveTab('structure')}
                             className={cn(
                                 "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
-                                "border-transparent text-muted-foreground hover:text-foreground"
+                                activeTab === 'structure'
+                                    ? "border-primary text-primary"
+                                    : "border-transparent text-muted-foreground hover:text-foreground"
                             )}
                         >
                             <Columns className="w-4 h-4" />
                             Structure
                         </button>
                         <button
+                            onClick={handleSqlTab}
                             className={cn(
                                 "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
-                                "border-primary text-primary"
+                                activeTab === 'sql'
+                                    ? "border-primary text-primary"
+                                    : "border-transparent text-muted-foreground hover:text-foreground"
                             )}
                         >
                             <Code className="w-4 h-4" />
@@ -119,24 +124,10 @@ export function QueryEditorPage() {
                     </div>
                 </div>
 
-                {/* SQL Editor Content */}
-                <div className="flex-1 flex flex-col overflow-hidden">
-                    {/* Editor Section - Top */}
-                    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                        <QueryTabs />
-                        <QueryToolbar />
-                        <div className="flex-1 overflow-hidden">
-                            <SqlEditor />
-                        </div>
-                    </div>
-
-                    {/* Resizable Divider */}
-                    <div className="h-1 bg-border cursor-row-resize hover:bg-primary/50 shrink-0" />
-
-                    {/* Results Section - Bottom */}
-                    <div className="h-[280px] shrink-0 overflow-hidden">
-                        <ResultsPanel />
-                    </div>
+                {/* Tab Content */}
+                <div className="flex-1 overflow-hidden">
+                    {activeTab === 'data' && <DataTab />}
+                    {activeTab === 'structure' && <StructureTab />}
                 </div>
 
                 {/* Status Bar */}
