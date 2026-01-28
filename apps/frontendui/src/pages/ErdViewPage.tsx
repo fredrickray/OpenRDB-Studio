@@ -1,27 +1,29 @@
 import { WorkspaceSidebar } from "@/components/workspace/WorkspaceSidebar"
-import { DataTab } from "@/components/workspace/DataTab"
-import { StructureTab } from "@/components/workspace/StructureTab"
+import { ErdView } from "@/components/workspace/ErdView"
 import { StatusBar } from "@/components/workspace/StatusBar"
 import { useTableStore } from "@/stores/tableStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Database, RefreshCw, Plus, Search, Bell, Table, Columns, Code, Eye } from "lucide-react"
+import { Database, RefreshCw, Search, Bell, Table, Columns, Code, Eye } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
-export function TableWorkspacePage() {
-    const { databases, selectedDatabase, selectedTable, activeTab, setActiveTab, refreshData, totalRows } = useTableStore()
+export function ErdViewPage() {
+    const { selectedDatabase, selectedTable, setActiveTab } = useTableStore()
     const navigate = useNavigate()
 
-    const selectedDb = databases.find(db => db.name === selectedDatabase)
-    const selectedTbl = selectedDb?.tables.find(t => t.name === selectedTable)
+    const handleDataTab = () => {
+        navigate('/workspace')
+        setTimeout(() => setActiveTab('data'), 0)
+    }
+
+    const handleStructureTab = () => {
+        navigate('/workspace')
+        setTimeout(() => setActiveTab('structure'), 0)
+    }
 
     const handleSqlTab = () => {
         navigate('/query')
-    }
-
-    const handleErdTab = () => {
-        navigate('/erd')
     }
 
     return (
@@ -62,26 +64,19 @@ export function TableWorkspacePage() {
                     </div>
                 </header>
 
-                {/* Breadcrumb and Actions */}
+                {/* Breadcrumb */}
                 <div className="h-12 border-b border-border flex items-center justify-between px-4 bg-card/50">
                     <div className="flex items-center gap-2 text-sm">
                         <span className="text-muted-foreground">Main_Cluster</span>
                         <span className="text-muted-foreground">/</span>
                         <span className="text-muted-foreground">{selectedDatabase}</span>
                         <span className="text-muted-foreground">/</span>
-                        <span className="font-semibold">{selectedTable}</span>
-                        <span className="text-muted-foreground text-xs ml-2">
-                            Estimated {totalRows.toLocaleString()} rows
-                        </span>
+                        <span className="font-semibold">ERD View</span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={refreshData}>
+                        <Button variant="outline" size="sm">
                             <RefreshCw className="w-3 h-3 mr-1" />
                             Refresh
-                        </Button>
-                        <Button size="sm">
-                            <Plus className="w-3 h-3 mr-1" />
-                            Insert Document
                         </Button>
                     </div>
                 </div>
@@ -90,44 +85,28 @@ export function TableWorkspacePage() {
                 <div className="border-b border-border bg-card/30">
                     <div className="flex items-center gap-1 px-4">
                         <button
-                            onClick={() => setActiveTab('data')}
-                            className={cn(
-                                "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
-                                activeTab === 'data'
-                                    ? "border-primary text-primary"
-                                    : "border-transparent text-muted-foreground hover:text-foreground"
-                            )}
+                            onClick={handleDataTab}
+                            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors border-transparent text-muted-foreground hover:text-foreground"
                         >
                             <Table className="w-4 h-4" />
                             Data
                         </button>
                         <button
-                            onClick={() => setActiveTab('structure')}
-                            className={cn(
-                                "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
-                                activeTab === 'structure'
-                                    ? "border-primary text-primary"
-                                    : "border-transparent text-muted-foreground hover:text-foreground"
-                            )}
+                            onClick={handleStructureTab}
+                            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors border-transparent text-muted-foreground hover:text-foreground"
                         >
                             <Columns className="w-4 h-4" />
                             Structure
                         </button>
                         <button
                             onClick={handleSqlTab}
-                            className={cn(
-                                "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
-                                activeTab === 'sql'
-                                    ? "border-primary text-primary"
-                                    : "border-transparent text-muted-foreground hover:text-foreground"
-                            )}
+                            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors border-transparent text-muted-foreground hover:text-foreground"
                         >
                             <Code className="w-4 h-4" />
                             SQL
                         </button>
                         <button
-                            onClick={handleErdTab}
-                            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors border-transparent text-muted-foreground hover:text-foreground"
+                            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors border-primary text-primary"
                         >
                             <Eye className="w-4 h-4" />
                             ERD View
@@ -135,10 +114,9 @@ export function TableWorkspacePage() {
                     </div>
                 </div>
 
-                {/* Tab Content */}
+                {/* ERD View Content */}
                 <div className="flex-1 overflow-hidden">
-                    {activeTab === 'data' && <DataTab />}
-                    {activeTab === 'structure' && <StructureTab />}
+                    <ErdView />
                 </div>
 
                 {/* Status Bar */}
