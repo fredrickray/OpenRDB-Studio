@@ -75,3 +75,42 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-muted-foreground);
 }
+
+/* Cursor pointer for all clickable elements */
+button,
+[role="button"],
+[type="button"],
+[type="submit"],
+[type="reset"],
+a,
+label[for],
+select,
+[tabindex]:not([tabindex="-1"]),
+.cursor-pointer {
+  cursor: pointer;
+}
+
+/* Ensure interactive elements have pointer cursor */
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"],
+[data-state],
+[data-radix-collection-item] {
+  cursor: pointer;
+}
+
+/* Clickable table rows and list items */
+tr:hover,
+li:hover {
+  cursor: pointer;
+}
+
+/* Tabs and navigation items */
+[role="tab"],
+[role="menuitem"],
+[role="option"],
+[role="treeitem"],
+nav button,
+nav a {
+  cursor: pointer;
+}
