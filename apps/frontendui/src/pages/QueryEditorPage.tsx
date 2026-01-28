@@ -9,7 +9,7 @@ import { ResultsPanel } from "@/components/query/ResultsPanel"
 import { useTableStore } from "@/stores/tableStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Database, RefreshCw, Plus, Search, Bell, Table, Columns, Code } from "lucide-react"
+import { Database, RefreshCw, Plus, Search, Bell, Table, Columns, Code, Eye } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
@@ -115,6 +115,15 @@ export function QueryEditorPage() {
                         >
                             <Code className="w-4 h-4" />
                             SQL
+                        </button>
+                        <button
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+                                "border-transparent text-muted-foreground hover:text-foreground"
+                            )}
+                        >
+                            <Eye className="w-4 h-4" />
+                            EDR View
                         </button>
                     </div>
                 </div>
