@@ -29,6 +29,10 @@ export function QueryEditorPage() {
         setTimeout(() => setActiveTab('structure'), 0)
     }
 
+    const handleErdTab = () => {
+        navigate('/erd')
+    }
+
     return (
         <div className="flex h-screen bg-background">
             {/* Sidebar */}
@@ -117,13 +121,14 @@ export function QueryEditorPage() {
                             SQL
                         </button>
                         <button
+                            onClick={handleErdTab}
                             className={cn(
                                 "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
                                 "border-transparent text-muted-foreground hover:text-foreground"
                             )}
                         >
                             <Eye className="w-4 h-4" />
-                            EDR View
+                            ERD View
                         </button>
                     </div>
                 </div>
