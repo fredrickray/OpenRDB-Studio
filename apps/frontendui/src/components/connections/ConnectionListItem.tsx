@@ -18,6 +18,8 @@ const colorMap = {
 const statusColors = {
     connected: "bg-green-500",
     disconnected: "bg-gray-500",
+    testing: "bg-yellow-500",
+    connecting: "bg-blue-500",
     error: "bg-red-500",
 }
 

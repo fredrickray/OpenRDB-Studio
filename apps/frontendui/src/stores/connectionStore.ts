@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { api } from '@/lib/api'
+import type { ConnectionConfig, ConnectionInfo, ConnectionTestResult } from '@/lib/api'
 
 export interface Connection {
     id: string
@@ -11,7 +13,10 @@ export interface Connection {
     sslRequired: boolean
     readOnly: boolean
     color: 'red' | 'yellow' | 'purple' | 'blue' | 'green'
-    status: 'connected' | 'disconnected' | 'error'
+    status: 'connected' | 'disconnected' | 'testing' | 'connecting' | 'error'
+    backendId?: string // ID from backend for active connection
+    errorMessage?: string
+    serverVersion?: string
 }
 
 interface ConnectionStore {
@@ -27,6 +32,11 @@ interface ConnectionStore {
     setActiveConnection: (id: string | null) => void
     openModal: (conn?: Connection) => void
     closeModal: () => void
+
+    // Backend integration actions
+    testConnection: (id: string) => Promise<ConnectionTestResult>
+    connectToDatabase: (id: string) => Promise<boolean>
+    disconnectFromDatabase: (id: string) => Promise<boolean>
 }
 
 // Sample connections for demo
@@ -72,7 +82,19 @@ const sampleConnections: Connection[] = [
     },
 ]
 
-export const useConnectionStore = create<ConnectionStore>((set) => ({
+// Helper to convert store Connection to API ConnectionConfig
+function toConnectionConfig(conn: Connection): ConnectionConfig {
+    return {
+        host: conn.host,
+        port: conn.port,
+        username: conn.username,
+        password: conn.password,
+        database: conn.database,
+        ssl_required: conn.sslRequired,
+    }
+}
+
+export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     connections: sampleConnections,
     activeConnectionId: null,
     isModalOpen: false,
@@ -113,4 +135,106 @@ export const useConnectionStore = create<ConnectionStore>((set) => ({
             isModalOpen: false,
             editingConnection: null,
         }),
+
+    // Test connection without connecting
+    testConnection: async (id) => {
+        const connection = get().connections.find((c) => c.id === id)
+        if (!connection) {
+            return { success: false, message: 'Connection not found', server_version: null }
+        }
+
+        // Set status to testing
+        set((state) => ({
+            connections: state.connections.map((c) =>
+                c.id === id ? { ...c, status: 'testing' as const, errorMessage: undefined } : c
+            ),
+        }))
+
+        try {
+            const result = await api.testConnection(toConnectionConfig(connection))
+
+            // Update status based on result
+            set((state) => ({
+                connections: state.connections.map((c) =>
+                    c.id === id
+                        ? {
+                            ...c,
+                            status: result.success ? 'disconnected' : 'error',
+                            errorMessage: result.success ? undefined : result.message,
+                            serverVersion: result.server_version || undefined,
+                        }
+                        : c
+                ),
+            }))
+
+            return result
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            set((state) => ({
+                connections: state.connections.map((c) =>
+                    c.id === id ? { ...c, status: 'error' as const, errorMessage: message } : c
+                ),
+            }))
+            return { success: false, message, server_version: null }
+        }
+    },
+
+    // Connect to database
+    connectToDatabase: async (id) => {
+        const connection = get().connections.find((c) => c.id === id)
+        if (!connection) return false
+
+        // Set status to connecting
+        set((state) => ({
+            connections: state.connections.map((c) =>
+                c.id === id ? { ...c, status: 'connecting' as const, errorMessage: undefined } : c
+            ),
+        }))
+
+        try {
+            const info = await api.connect(toConnectionConfig(connection))
+
+            // Update with connected status and backend ID
+            set((state) => ({
+                connections: state.connections.map((c) =>
+                    c.id === id
+                        ? { ...c, status: 'connected' as const, backendId: info.id, errorMessage: undefined }
+                        : c
+                ),
+                activeConnectionId: id,
+            }))
+
+            return true
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            set((state) => ({
+                connections: state.connections.map((c) =>
+                    c.id === id ? { ...c, status: 'error' as const, errorMessage: message } : c
+                ),
+            }))
+            return false
+        }
+    },
+
+    // Disconnect from database
+    disconnectFromDatabase: async (id) => {
+        const connection = get().connections.find((c) => c.id === id)
+        if (!connection || !connection.backendId) return false
+
+        try {
+            await api.disconnect(connection.backendId)
+
+            set((state) => ({
+                connections: state.connections.map((c) =>
+                    c.id === id
+                        ? { ...c, status: 'disconnected' as const, backendId: undefined, errorMessage: undefined }
+                        : c
+                ),
+            }))
+
+            return true
+        } catch (error) {
+            return false
+        }
+    },
 }))
