@@ -1,7 +1,3 @@
-pub mod introspection;
-pub mod query;
-pub mod connection;
+pub mod postgres;
 
-pub use connection::*;
-pub use introspection::*;
-pub use query::*;  
+pub use postgres::*;

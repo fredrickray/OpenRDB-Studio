@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { ZoomIn, ZoomOut, Hand, Maximize2, LayoutGrid, Sparkles, Move, Search, Download } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // Mock table data for ERD
-const mockTables = [
+const initialTables = [
     {
         id: 'users',
         name: 'users',
@@ -47,28 +47,42 @@ const mockRelationships = [
     { from: 'users', fromColumn: 'id', to: 'orders', toColumn: 'user_id' },
 ]
 
-interface TableCardProps {
-    table: typeof mockTables[0]
-    zoom: number
-    onDrag?: (id: string, x: number, y: number) => void
+interface TableData {
+    id: string
+    name: string
+    x: number
+    y: number
+    columns: { name: string; type: string; isPrimaryKey: boolean; isForeignKey: boolean }[]
 }
 
-function TableCard({ table, zoom }: TableCardProps) {
+interface TableCardProps {
+    table: TableData
+    zoom: number
+    onMouseDown: (e: React.MouseEvent, id: string) => void
+    isDragging: boolean
+}
+
+function TableCard({ table, zoom, onMouseDown, isDragging }: TableCardProps) {
     return (
         <div
-            className="absolute bg-card border border-border rounded-lg shadow-lg overflow-hidden"
+            className={cn(
+                "absolute bg-card border border-border rounded-lg shadow-lg overflow-hidden select-none",
+                isDragging ? "cursor-grabbing shadow-2xl ring-2 ring-primary" : "cursor-grab hover:shadow-xl"
+            )}
             style={{
                 left: table.x * zoom,
                 top: table.y * zoom,
                 transform: `scale(${zoom})`,
                 transformOrigin: 'top left',
                 minWidth: 180,
+                zIndex: isDragging ? 100 : 1,
             }}
+            onMouseDown={(e) => onMouseDown(e, table.id)}
         >
             {/* Header */}
             <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b border-border">
                 <span className="text-sm font-semibold">{table.name}</span>
-                <button className="text-muted-foreground hover:text-foreground">
+                <button className="text-muted-foreground hover:text-foreground" onClick={(e) => e.stopPropagation()}>
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
                     </svg>
@@ -102,14 +116,49 @@ function TableCard({ table, zoom }: TableCardProps) {
 export function ErdView() {
     const [zoom, setZoom] = useState(1)
     const [pan, setPan] = useState({ x: 0, y: 0 })
-    const [isPanning, setIsPanning] = useState(false)
-    const [tables] = useState(mockTables)
+    const [tables, setTables] = useState<TableData[]>(initialTables)
+    const [draggingId, setDraggingId] = useState<string | null>(null)
+    const [dragStart, setDragStart] = useState({ x: 0, y: 0, tableX: 0, tableY: 0 })
+    const [selectedTable, setSelectedTable] = useState<string>('users')
     const canvasRef = useRef<HTMLDivElement>(null)
-    const svgRef = useRef<SVGSVGElement>(null)
 
     const handleZoomIn = () => setZoom(z => Math.min(z + 0.1, 2))
     const handleZoomOut = () => setZoom(z => Math.max(z - 0.1, 0.5))
     const handleFitToScreen = () => setZoom(0.85)
+
+    const handleMouseDown = useCallback((e: React.MouseEvent, tableId: string) => {
+        e.preventDefault()
+        const table = tables.find(t => t.id === tableId)
+        if (!table) return
+
+        setDraggingId(tableId)
+        setSelectedTable(tableId)
+        setDragStart({
+            x: e.clientX,
+            y: e.clientY,
+            tableX: table.x,
+            tableY: table.y,
+        })
+    }, [tables])
+
+    const handleMouseMove = useCallback((e: React.MouseEvent) => {
+        if (!draggingId) return
+
+        const dx = (e.clientX - dragStart.x) / zoom
+        const dy = (e.clientY - dragStart.y) / zoom
+
+        setTables(prevTables =>
+            prevTables.map(t =>
+                t.id === draggingId
+                    ? { ...t, x: dragStart.tableX + dx, y: dragStart.tableY + dy }
+                    : t
+            )
+        )
+    }, [draggingId, dragStart, zoom])
+
+    const handleMouseUp = useCallback(() => {
+        setDraggingId(null)
+    }, [])
 
     // Draw relationship lines
     const getRelationshipPath = (rel: typeof mockRelationships[0]) => {
@@ -117,14 +166,21 @@ export function ErdView() {
         const toTable = tables.find(t => t.id === rel.to)
         if (!fromTable || !toTable) return ''
 
-        const fromX = (fromTable.x + 180) * zoom + pan.x // right side of from table
+        const fromX = (fromTable.x + 180) * zoom + pan.x
         const fromY = (fromTable.y + 50) * zoom + pan.y
-        const toX = toTable.x * zoom + pan.x // left side of to table
+        const toX = toTable.x * zoom + pan.x
         const toY = (toTable.y + 50) * zoom + pan.y
 
-        // Create curved path
         const midX = (fromX + toX) / 2
         return `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`
+    }
+
+    const handleAutoLayout = () => {
+        setTables([
+            { ...tables[0], x: 80, y: 100 },
+            { ...tables[1], x: 380, y: 160 },
+            { ...tables[2], x: 80, y: 320 },
+        ])
     }
 
     return (
@@ -149,7 +205,7 @@ export function ErdView() {
                     <LayoutGrid className="w-4 h-4" />
                 </Button>
                 <div className="w-px h-6 bg-border mx-1" />
-                <Button size="sm" className="h-8 gap-1">
+                <Button size="sm" className="h-8 gap-1" onClick={handleAutoLayout}>
                     <Sparkles className="w-3 h-3" />
                     Auto-layout
                 </Button>
@@ -159,11 +215,13 @@ export function ErdView() {
             <div
                 ref={canvasRef}
                 className="flex-1 relative overflow-hidden"
-                style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
+                style={{ cursor: draggingId ? 'grabbing' : 'default' }}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
             >
                 {/* Relationship Lines SVG */}
                 <svg
-                    ref={svgRef}
                     className="absolute inset-0 w-full h-full pointer-events-none"
                     style={{ zIndex: 1 }}
                 >
@@ -203,7 +261,13 @@ export function ErdView() {
                     }}
                 >
                     {tables.map((table) => (
-                        <TableCard key={table.id} table={table} zoom={zoom} />
+                        <TableCard
+                            key={table.id}
+                            table={table}
+                            zoom={zoom}
+                            onMouseDown={handleMouseDown}
+                            isDragging={draggingId === table.id}
+                        />
                     ))}
                 </div>
             </div>
@@ -217,7 +281,10 @@ export function ErdView() {
                     {tables.map((table) => (
                         <div
                             key={table.id}
-                            className="absolute bg-primary/50 rounded"
+                            className={cn(
+                                "absolute rounded transition-all",
+                                table.id === selectedTable ? "bg-primary" : "bg-primary/50"
+                            )}
                             style={{
                                 left: table.x / 8,
                                 top: table.y / 10,
@@ -254,7 +321,7 @@ export function ErdView() {
 
             {/* Status Bar - Right */}
             <div className="absolute bottom-4 right-48 text-xs text-primary">
-                SELECTION: USERS.ID
+                SELECTION: {selectedTable.toUpperCase()}.ID
             </div>
 
             {/* Zoom Slider */}

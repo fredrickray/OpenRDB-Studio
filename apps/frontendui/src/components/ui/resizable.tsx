@@ -1,22 +1,21 @@
 import { GripVertical } from "lucide-react"
 import { Panel, Group, Separator } from "react-resizable-panels"
+import type { GroupProps } from "react-resizable-panels"
 
 import { cn } from "@/lib/utils"
 
-interface ResizablePanelGroupProps extends React.ComponentProps<typeof Group> {
-    direction?: "horizontal" | "vertical"
-}
+interface ResizablePanelGroupProps extends GroupProps { }
 
 const ResizablePanelGroup = ({
     className,
-    direction = "horizontal",
+    orientation = "horizontal",
     ...props
 }: ResizablePanelGroupProps) => (
     <Group
-        direction={direction}
+        orientation={orientation}
         className={cn(
             "flex h-full w-full",
-            direction === "vertical" ? "flex-col" : "flex-row",
+            orientation === "vertical" ? "flex-col" : "flex-row",
             className
         )}
         {...props}

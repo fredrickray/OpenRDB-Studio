@@ -1,4 +1,4 @@
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, Row, Column};
 use crate::adapters::postgres::models::QueryResult;
 
 fn is_safe_query(sql: &str) -> bool {

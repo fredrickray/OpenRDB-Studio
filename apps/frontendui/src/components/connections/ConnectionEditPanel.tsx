@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Database, Eye, EyeOff, Trash2, CheckCircle, Loader2, X } from "lucide-react"
+import { Database, Eye, EyeOff, Trash2, CheckCircle, Loader2, X, AlertCircle } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 
 interface ConnectionEditPanelProps {
     connection: Connection
@@ -13,9 +14,13 @@ interface ConnectionEditPanelProps {
 }
 
 export function ConnectionEditPanel({ connection, onClose }: ConnectionEditPanelProps) {
-    const { updateConnection, deleteConnection } = useConnectionStore()
+    const { updateConnection, deleteConnection, testConnection, connectToDatabase } = useConnectionStore()
+    const navigate = useNavigate()
     const [showPassword, setShowPassword] = useState(false)
     const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
+    const [testMessage, setTestMessage] = useState('')
+    const [serverVersion, setServerVersion] = useState<string | null>(null)
+    const [isConnecting, setIsConnecting] = useState(false)
 
     const [formData, setFormData] = useState<Omit<Connection, 'id' | 'status'>>({
         name: connection.name,
@@ -43,15 +48,60 @@ export function ConnectionEditPanel({ connection, onClose }: ConnectionEditPanel
             color: connection.color,
         })
         setTestStatus('idle')
+        setTestMessage('')
+        setServerVersion(null)
     }, [connection])
 
     const handleTestConnection = async () => {
+        // Save form data first
+        updateConnection(connection.id, formData)
+
         setTestStatus('testing')
-        await new Promise(resolve => setTimeout(resolve, 1500))
-        setTestStatus('success')
+        setTestMessage('')
+        setServerVersion(null)
+
+        try {
+            const result = await testConnection(connection.id)
+
+            if (result.success) {
+                setTestStatus('success')
+                setTestMessage('Connection test successful')
+                setServerVersion(result.server_version)
+            } else {
+                setTestStatus('error')
+                setTestMessage(result.message || 'Connection failed')
+            }
+        } catch (error) {
+            setTestStatus('error')
+            setTestMessage(error instanceof Error ? error.message : 'Connection test failed')
+        }
     }
 
-    const handleSave = () => {
+    const handleConnect = async () => {
+        // Save form data first
+        updateConnection(connection.id, formData)
+
+        setIsConnecting(true)
+
+        try {
+            const success = await connectToDatabase(connection.id)
+
+            if (success) {
+                // Navigate to workspace on successful connection
+                navigate('/workspace')
+            } else {
+                setTestStatus('error')
+                setTestMessage('Failed to connect')
+            }
+        } catch (error) {
+            setTestStatus('error')
+            setTestMessage(error instanceof Error ? error.message : 'Connection failed')
+        } finally {
+            setIsConnecting(false)
+        }
+    }
+
+    const _handleSave = () => {
         updateConnection(connection.id, formData)
     }
 
@@ -83,6 +133,19 @@ export function ConnectionEditPanel({ connection, onClose }: ConnectionEditPanel
             {/* Form Content */}
             <ScrollArea className="flex-1">
                 <div className="p-4 space-y-6">
+                    {/* Connection Name */}
+                    <div className="space-y-3">
+                        <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-primary" />
+                            CONNECTION NAME
+                        </h4>
+                        <Input
+                            placeholder="My Connection"
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        />
+                    </div>
+
                     {/* Server Info Section */}
                     <div className="space-y-3">
                         <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -157,7 +220,7 @@ export function ConnectionEditPanel({ connection, onClose }: ConnectionEditPanel
                         <div className="flex gap-2">
                             <Input
                                 id="database"
-                                placeholder="main_production"
+                                placeholder="postgres"
                                 value={formData.database}
                                 onChange={(e) => setFormData({ ...formData, database: e.target.value })}
                                 className="flex-1"
@@ -196,10 +259,19 @@ export function ConnectionEditPanel({ connection, onClose }: ConnectionEditPanel
                     {testStatus === 'success' && (
                         <div className="flex items-center gap-2 text-green-500 text-sm bg-green-500/10 px-3 py-2 rounded-md">
                             <CheckCircle className="w-4 h-4" />
-                            <span>Connection test successful</span>
-                            <span className="text-muted-foreground text-xs ml-auto">
-                                Server version: PostgreSQL 14.2 (arm-apple-darwin23.2)
-                            </span>
+                            <span>{testMessage}</span>
+                            {serverVersion && (
+                                <span className="text-muted-foreground text-xs ml-auto">
+                                    {serverVersion}
+                                </span>
+                            )}
+                        </div>
+                    )}
+
+                    {testStatus === 'error' && (
+                        <div className="flex items-center gap-2 text-red-500 text-sm bg-red-500/10 px-3 py-2 rounded-md">
+                            <AlertCircle className="w-4 h-4" />
+                            <span>{testMessage}</span>
                         </div>
                     )}
                 </div>
@@ -207,8 +279,19 @@ export function ConnectionEditPanel({ connection, onClose }: ConnectionEditPanel
 
             {/* Footer Actions */}
             <div className="p-4 border-t border-border flex items-center gap-3 shrink-0">
-                <Button onClick={handleSave} className="flex-1">
-                    Connect Now
+                <Button
+                    onClick={handleConnect}
+                    className="flex-1"
+                    disabled={isConnecting}
+                >
+                    {isConnecting ? (
+                        <>
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            Connecting...
+                        </>
+                    ) : (
+                        'Connect Now'
+                    )}
                 </Button>
                 <Button
                     variant="outline"

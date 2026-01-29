@@ -1,8 +1,8 @@
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use crate::adapters::postgres::models::{TableInfo, ColumnInfo};
 
 pub async fn list_tables(pool: &PgPool) -> Result<Vec<TableInfo>, String> {
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT table_schema, table_name
         FROM information_schema.tables
@@ -18,8 +18,8 @@ pub async fn list_tables(pool: &PgPool) -> Result<Vec<TableInfo>, String> {
     Ok(rows
         .into_iter()
         .map(|r| TableInfo {
-            schema: r.table_schema,
-            name: r.table_name,
+            schema: r.try_get("table_schema").ok(),
+            name: r.try_get("table_name").ok(),
         })
         .collect())
 }
@@ -29,27 +29,30 @@ pub async fn list_columns(
     schema: &str,
     table: &str,
 ) -> Result<Vec<ColumnInfo>, String> {
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT column_name, data_type, is_nullable, column_default
         FROM information_schema.columns
         WHERE table_schema = $1 AND table_name = $2
         ORDER BY ordinal_position
-        "#,
-        schema,
-        table
+        "#
     )
+    .bind(schema)
+    .bind(table)
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
     Ok(rows
         .into_iter()
-        .map(|r| ColumnInfo {
-            name: r.column_name,
-            data_type: r.data_type,
-            is_nullable: r.is_nullable == "YES",
-            default_value: r.column_default,
+        .map(|r| {
+            let is_nullable: Option<String> = r.try_get("is_nullable").ok();
+            ColumnInfo {
+                name: r.try_get("column_name").ok(),
+                data_type: r.try_get("data_type").ok(),
+                is_nullable: is_nullable.as_deref() == Some("YES"),
+                default_value: r.try_get("column_default").ok(),
+            }
         })
         .collect())
 }
