@@ -33,6 +33,12 @@ export interface QueryResult {
     rows: string[][]
 }
 
+export interface DatabaseInfo {
+    name: string
+    size: string | null
+    owner: string | null
+}
+
 // Check if we're running in Tauri
 const isTauri = typeof window !== 'undefined' && '__TAURI__' in window
 
@@ -110,5 +116,12 @@ export const api = {
      */
     async ping(): Promise<string> {
         return callTauri<string>('ping')
+    },
+
+    /**
+     * List available databases
+     */
+    async listDatabases(config: ConnectionConfig): Promise<DatabaseInfo[]> {
+        return callTauri<DatabaseInfo[]>('list_databases', { config })
     }
 }

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { api } from '@/lib/api'
-import type { ConnectionConfig, ConnectionInfo, ConnectionTestResult } from '@/lib/api'
+import type { ConnectionConfig, ConnectionInfo, ConnectionTestResult, DatabaseInfo } from '@/lib/api'
 
 export interface Connection {
     id: string
@@ -37,6 +37,7 @@ interface ConnectionStore {
     testConnection: (id: string) => Promise<ConnectionTestResult>
     connectToDatabase: (id: string) => Promise<boolean>
     disconnectFromDatabase: (id: string) => Promise<boolean>
+    listDatabases: (id: string) => Promise<{ success: boolean; databases: DatabaseInfo[]; message?: string }>
 }
 
 // Sample connections for demo
@@ -235,6 +236,22 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
             return true
         } catch (error) {
             return false
+        }
+    },
+
+    // List available databases
+    listDatabases: async (id) => {
+        const connection = get().connections.find((c) => c.id === id)
+        if (!connection) {
+            return { success: false, databases: [], message: 'Connection not found' }
+        }
+
+        try {
+            const databases = await api.listDatabases(toConnectionConfig(connection))
+            return { success: true, databases }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            return { success: false, databases: [], message }
         }
     },
 }))
