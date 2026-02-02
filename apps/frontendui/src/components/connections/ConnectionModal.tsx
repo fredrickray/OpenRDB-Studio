@@ -11,12 +11,20 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Database, Eye, EyeOff, Trash2, CheckCircle, Loader2 } from "lucide-react"
+import { Database, Eye, EyeOff, Trash2, CheckCircle, Loader2, AlertCircle } from "lucide-react"
+import { api } from "@/lib/api"
+import type { DatabaseInfo } from "@/lib/api"
 
 export function ConnectionModal() {
     const { isModalOpen, closeModal, editingConnection, addConnection, updateConnection, deleteConnection } = useConnectionStore()
     const [showPassword, setShowPassword] = useState(false)
     const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
+    const [testMessage, setTestMessage] = useState('')
+    const [serverVersion, setServerVersion] = useState<string | null>(null)
+    const [showDatabaseList, setShowDatabaseList] = useState(false)
+    const [databaseList, setDatabaseList] = useState<DatabaseInfo[]>([])
+    const [isListingDatabases, setIsListingDatabases] = useState(false)
+    const [listError, setListError] = useState<string | null>(null)
 
     const [formData, setFormData] = useState<Omit<Connection, 'id' | 'status'>>({
         name: editingConnection?.name || '',
@@ -61,9 +69,62 @@ export function ConnectionModal() {
 
     const handleTestConnection = async () => {
         setTestStatus('testing')
-        // Simulate testing - in real app, this would call the Tauri backend
-        await new Promise(resolve => setTimeout(resolve, 1500))
-        setTestStatus('success')
+        setTestMessage('')
+        setServerVersion(null)
+
+        try {
+            const config = {
+                host: formData.host,
+                port: formData.port,
+                username: formData.username,
+                password: formData.password,
+                database: formData.database,
+                ssl_required: formData.sslRequired,
+            }
+
+            const result = await api.testConnection(config)
+
+            if (result.success) {
+                setTestStatus('success')
+                setTestMessage(result.message)
+                setServerVersion(result.server_version)
+            } else {
+                setTestStatus('error')
+                setTestMessage(result.message)
+            }
+        } catch (error) {
+            setTestStatus('error')
+            setTestMessage(error instanceof Error ? error.message : 'Connection test failed')
+        }
+    }
+
+    const handleListDatabases = async () => {
+        setIsListingDatabases(true)
+        setListError(null)
+        setShowDatabaseList(true)
+
+        try {
+            const config = {
+                host: formData.host,
+                port: formData.port,
+                username: formData.username,
+                password: formData.password,
+                database: 'postgres', // Connect to postgres to list databases
+                ssl_required: formData.sslRequired,
+            }
+
+            const databases = await api.listDatabases(config)
+            setDatabaseList(databases)
+        } catch (error) {
+            setListError(error instanceof Error ? error.message : 'Failed to list databases')
+        } finally {
+            setIsListingDatabases(false)
+        }
+    }
+
+    const handleSelectDatabase = (dbName: string) => {
+        setFormData({ ...formData, database: dbName })
+        setShowDatabaseList(false)
     }
 
     const handleSave = () => {
@@ -192,8 +253,14 @@ export function ConnectionModal() {
                                 onChange={(e) => setFormData({ ...formData, database: e.target.value })}
                                 className="flex-1"
                             />
-                            <Button variant="outline" size="sm" className="shrink-0">
-                                Find List
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="shrink-0"
+                                onClick={handleListDatabases}
+                                disabled={isListingDatabases}
+                            >
+                                {isListingDatabases ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Find List'}
                             </Button>
                         </div>
                     </div>
@@ -226,10 +293,19 @@ export function ConnectionModal() {
                     {testStatus === 'success' && (
                         <div className="flex items-center gap-2 text-green-500 text-sm bg-green-500/10 px-3 py-2 rounded-md">
                             <CheckCircle className="w-4 h-4" />
-                            <span>Connection test successful</span>
-                            <span className="text-muted-foreground text-xs ml-auto">
-                                Server version: PostgreSQL 14.2 (arm-apple-darwin23.2)
-                            </span>
+                            <span>{testMessage}</span>
+                            {serverVersion && (
+                                <span className="text-muted-foreground text-xs ml-auto">
+                                    {serverVersion}
+                                </span>
+                            )}
+                        </div>
+                    )}
+
+                    {testStatus === 'error' && (
+                        <div className="flex items-center gap-2 text-red-500 text-sm bg-red-500/10 px-3 py-2 rounded-md">
+                            <AlertCircle className="w-4 h-4" />
+                            <span>{testMessage}</span>
                         </div>
                     )}
                 </div>
@@ -260,6 +336,41 @@ export function ConnectionModal() {
                     )}
                 </div>
             </DialogContent>
+
+            {/* Database List Dialog */}
+            <Dialog open={showDatabaseList} onOpenChange={setShowDatabaseList}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Select Database</DialogTitle>
+                        <DialogDescription>
+                            Select a database to use for this connection.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="max-h-[300px] overflow-y-auto space-y-2">
+                        {isListingDatabases ? (
+                            <div className="flex justify-center p-4"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+                        ) : listError ? (
+                            <div className="text-red-500 p-2 text-sm">{listError}</div>
+                        ) : databaseList.length === 0 ? (
+                            <div className="text-muted-foreground p-2 text-sm">No databases found</div>
+                        ) : (
+                            databaseList.map((db, i) => (
+                                <button
+                                    key={`${db.name}-${i}`}
+                                    className="w-full text-left px-3 py-2 rounded-md hover:bg-accent hover:text-accent-foreground text-sm flex items-center justify-between group transition-colors"
+                                    onClick={() => handleSelectDatabase(db.name)}
+                                >
+                                    <span className="font-medium">{db.name}</span>
+                                    <div className="text-xs text-muted-foreground flex gap-2">
+                                        {db.owner && <span>{db.owner}</span>}
+                                        {db.size && <span>{db.size}</span>}
+                                    </div>
+                                </button>
+                            ))
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </Dialog>
     )
 }

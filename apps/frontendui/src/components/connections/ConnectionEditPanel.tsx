@@ -7,6 +7,8 @@ import { Switch } from "@/components/ui/switch"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Database, Eye, EyeOff, Trash2, CheckCircle, Loader2, X, AlertCircle } from "lucide-react"
 import { useNavigate } from "react-router-dom"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import type { DatabaseInfo } from "@/lib/api"
 
 interface ConnectionEditPanelProps {
     connection: Connection
@@ -14,13 +16,17 @@ interface ConnectionEditPanelProps {
 }
 
 export function ConnectionEditPanel({ connection, onClose }: ConnectionEditPanelProps) {
-    const { updateConnection, deleteConnection, testConnection, connectToDatabase } = useConnectionStore()
+    const { updateConnection, deleteConnection, testConnection, connectToDatabase, listDatabases } = useConnectionStore()
     const navigate = useNavigate()
     const [showPassword, setShowPassword] = useState(false)
     const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
     const [testMessage, setTestMessage] = useState('')
     const [serverVersion, setServerVersion] = useState<string | null>(null)
     const [isConnecting, setIsConnecting] = useState(false)
+    const [showDatabaseList, setShowDatabaseList] = useState(false)
+    const [databaseList, setDatabaseList] = useState<DatabaseInfo[]>([])
+    const [isListingDatabases, setIsListingDatabases] = useState(false)
+    const [listError, setListError] = useState<string | null>(null)
 
     const [formData, setFormData] = useState<Omit<Connection, 'id' | 'status'>>({
         name: connection.name,
@@ -99,6 +105,33 @@ export function ConnectionEditPanel({ connection, onClose }: ConnectionEditPanel
         } finally {
             setIsConnecting(false)
         }
+    }
+
+    const handleListDatabases = async () => {
+        // Save form data first
+        updateConnection(connection.id, formData)
+
+        setIsListingDatabases(true)
+        setListError(null)
+        setShowDatabaseList(true)
+
+        try {
+            const result = await listDatabases(connection.id)
+            if (result.success) {
+                setDatabaseList(result.databases)
+            } else {
+                setListError(result.message || 'Failed to list databases')
+            }
+        } catch (error) {
+            setListError(error instanceof Error ? error.message : 'Failed to list databases')
+        } finally {
+            setIsListingDatabases(false)
+        }
+    }
+
+    const handleSelectDatabase = (dbName: string) => {
+        setFormData({ ...formData, database: dbName })
+        setShowDatabaseList(false)
     }
 
     const _handleSave = () => {
@@ -225,8 +258,14 @@ export function ConnectionEditPanel({ connection, onClose }: ConnectionEditPanel
                                 onChange={(e) => setFormData({ ...formData, database: e.target.value })}
                                 className="flex-1"
                             />
-                            <Button variant="outline" size="sm" className="shrink-0">
-                                Find List
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="shrink-0"
+                                onClick={handleListDatabases}
+                                disabled={isListingDatabases}
+                            >
+                                {isListingDatabases ? <Loader2 className="w-4 h-4 animate-spin" /> : "Find List"}
                             </Button>
                         </div>
                     </div>
@@ -311,6 +350,40 @@ export function ConnectionEditPanel({ connection, onClose }: ConnectionEditPanel
                     <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
             </div>
+
+            <Dialog open={showDatabaseList} onOpenChange={setShowDatabaseList}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Select Database</DialogTitle>
+                        <DialogDescription>
+                            Select a database to use for this connection.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="max-h-[300px] overflow-y-auto space-y-2">
+                        {isListingDatabases ? (
+                            <div className="flex justify-center p-4"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+                        ) : listError ? (
+                            <div className="text-red-500 p-2 text-sm">{listError}</div>
+                        ) : databaseList.length === 0 ? (
+                            <div className="text-muted-foreground p-2 text-sm">No databases found</div>
+                        ) : (
+                            databaseList.map((db, i) => (
+                                <button
+                                    key={`${db.name}-${i}`}
+                                    className="w-full text-left px-3 py-2 rounded-md hover:bg-accent hover:text-accent-foreground text-sm flex items-center justify-between group transition-colors"
+                                    onClick={() => handleSelectDatabase(db.name)}
+                                >
+                                    <span className="font-medium">{db.name}</span>
+                                    <div className="text-xs text-muted-foreground flex gap-2">
+                                        {db.owner && <span>{db.owner}</span>}
+                                        {db.size && <span>{db.size}</span>}
+                                    </div>
+                                </button>
+                            ))
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }
