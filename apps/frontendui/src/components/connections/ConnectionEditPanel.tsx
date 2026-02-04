@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import { useConnectionStore, type Connection } from "@/stores/connectionStore"
+import { useTableStore } from "@/stores/tableStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,6 +18,7 @@ interface ConnectionEditPanelProps {
 
 export function ConnectionEditPanel({ connection, onClose }: ConnectionEditPanelProps) {
     const { updateConnection, deleteConnection, testConnection, connectToDatabase, listDatabases } = useConnectionStore()
+    const setActiveConnection = useTableStore((state) => state.setActiveConnection)
     const navigate = useNavigate()
     const [showPassword, setShowPassword] = useState(false)
     const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
@@ -90,9 +92,15 @@ export function ConnectionEditPanel({ connection, onClose }: ConnectionEditPanel
         setIsConnecting(true)
 
         try {
-            const success = await connectToDatabase(connection.id)
+            const connectionInfo = await connectToDatabase(connection.id)
 
-            if (success) {
+            if (connectionInfo) {
+                // Set the active connection in the table store
+                setActiveConnection(connectionInfo.id, formData.database)
+
+                // Wait for microtask to ensure state update propagates
+                await Promise.resolve()
+
                 // Navigate to workspace on successful connection
                 navigate('/workspace')
             } else {

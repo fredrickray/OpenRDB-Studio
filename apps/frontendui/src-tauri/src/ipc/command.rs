@@ -2,7 +2,7 @@ use tauri::{command, State};
 use crate::state::AppState;
 use crate::adapters::postgres::{
     ConnectionConfig, ConnectionTestResult, ConnectionInfo, 
-    TableInfo, QueryResult, DatabaseInfo, create_pool, 
+    TableInfo, QueryResult, DatabaseInfo, ColumnInfo, create_pool, 
     list_tables as db_list_tables, execute_query as db_execute_query
 };
 use sqlx::Row;
@@ -162,4 +162,163 @@ pub async fn execute_query(
 #[command]
 pub fn ping() -> String {
     "pong".to_string()
+}
+
+/// List columns for a specific table
+#[command]
+pub async fn list_columns(
+    connection_id: String,
+    schema: String,
+    table: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ColumnInfo>, String> {
+    let pool = state
+        .get_connection(&connection_id)
+        .ok_or("Connection not found")?;
+    
+    let rows = sqlx::query(
+        r#"
+        SELECT 
+            c.column_name,
+            c.data_type,
+            c.is_nullable,
+            c.column_default,
+            CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END as is_primary_key,
+            CASE WHEN fk.column_name IS NOT NULL THEN true ELSE false END as is_foreign_key
+        FROM information_schema.columns c
+        LEFT JOIN (
+            SELECT ku.column_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage ku
+                ON tc.constraint_name = ku.constraint_name
+            WHERE tc.table_schema = $1 
+                AND tc.table_name = $2 
+                AND tc.constraint_type = 'PRIMARY KEY'
+        ) pk ON c.column_name = pk.column_name
+        LEFT JOIN (
+            SELECT ku.column_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage ku
+                ON tc.constraint_name = ku.constraint_name
+            WHERE tc.table_schema = $1 
+                AND tc.table_name = $2 
+                AND tc.constraint_type = 'FOREIGN KEY'
+        ) fk ON c.column_name = fk.column_name
+        WHERE c.table_schema = $1 AND c.table_name = $2
+        ORDER BY c.ordinal_position
+        "#
+    )
+    .bind(&schema)
+    .bind(&table)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| format!("Failed to list columns: {}", e))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let is_nullable: Option<String> = r.try_get("is_nullable").ok();
+            ColumnInfo {
+                name: r.try_get("column_name").ok(),
+                data_type: r.try_get("data_type").ok(),
+                is_nullable: is_nullable.as_deref() == Some("YES"),
+                default_value: r.try_get("column_default").ok(),
+                is_primary_key: r.try_get("is_primary_key").unwrap_or(false),
+                is_foreign_key: r.try_get("is_foreign_key").unwrap_or(false),
+            }
+        })
+        .collect())
+}
+
+/// Paginated table data response
+#[derive(serde::Serialize)]
+pub struct TableDataResult {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<Option<String>>>,
+    pub total_rows: i64,
+    pub page: i32,
+    pub limit: i32,
+}
+
+/// Get paginated table data
+#[command]
+pub async fn get_table_data(
+    connection_id: String,
+    schema: String,
+    table: String,
+    page: i32,
+    limit: i32,
+    state: State<'_, AppState>,
+) -> Result<TableDataResult, String> {
+    let pool = state
+        .get_connection(&connection_id)
+        .ok_or("Connection not found")?;
+    
+    let offset = (page - 1) * limit;
+    
+    // Get total row count
+    let count_query = format!(
+        "SELECT COUNT(*) as count FROM \"{}\".\"{}\"",
+        schema.replace('"', "\"\""),
+        table.replace('"', "\"\"")
+    );
+    let count_row: (i64,) = sqlx::query_as(&count_query)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| format!("Failed to get row count: {}", e))?;
+    let total_rows = count_row.0;
+    
+    // Get column names
+    let columns_query = format!(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = '{}' AND table_name = '{}' ORDER BY ordinal_position",
+        schema.replace('\'', "''"),
+        table.replace('\'', "''")
+    );
+    let column_rows = sqlx::query(&columns_query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to get columns: {}", e))?;
+    
+    let columns: Vec<String> = column_rows
+        .iter()
+        .map(|r| r.try_get::<String, _>("column_name").unwrap_or_default())
+        .collect();
+    
+    // Build column list with CAST to text for each column
+    let column_casts: Vec<String> = columns
+        .iter()
+        .map(|c| format!("\"{}\"::text", c.replace('"', "\"\"")))
+        .collect();
+    
+    // Get actual data - cast all columns to text to avoid type issues
+    let data_query = format!(
+        "SELECT {} FROM \"{}\".\"{}\" LIMIT {} OFFSET {}",
+        column_casts.join(", "),
+        schema.replace('"', "\"\""),
+        table.replace('"', "\"\""),
+        limit,
+        offset
+    );
+    
+    let data_rows = sqlx::query(&data_query)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch data: {}", e))?;
+    
+    let rows: Vec<Vec<Option<String>>> = data_rows
+        .iter()
+        .map(|row| {
+            (0..columns.len())
+                .map(|i| row.try_get::<Option<String>, _>(i).ok().flatten())
+                .collect()
+        })
+        .collect();
+    
+    Ok(TableDataResult {
+        columns,
+        rows,
+        total_rows,
+        page,
+        limit,
+    })
 }

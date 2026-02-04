@@ -9,7 +9,7 @@ import { Link, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
 export function ErdViewPage() {
-    const { selectedDatabase, selectedTable, setActiveTab } = useTableStore()
+    const { connectedDatabase, selectedTable, setActiveTab } = useTableStore()
     const navigate = useNavigate()
 
     const handleDataTab = () => {
@@ -67,9 +67,7 @@ export function ErdViewPage() {
                 {/* Breadcrumb */}
                 <div className="h-12 border-b border-border flex items-center justify-between px-4 bg-card/50">
                     <div className="flex items-center gap-2 text-sm">
-                        <span className="text-muted-foreground">Main_Cluster</span>
-                        <span className="text-muted-foreground">/</span>
-                        <span className="text-muted-foreground">{selectedDatabase}</span>
+                        <span className="text-muted-foreground">{connectedDatabase || 'Database'}</span>
                         <span className="text-muted-foreground">/</span>
                         <span className="font-semibold">ERD View</span>
                     </div>

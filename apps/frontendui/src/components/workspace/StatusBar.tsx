@@ -3,11 +3,12 @@ import { useConnectionStore } from "@/stores/connectionStore"
 import { Circle } from "lucide-react"
 
 export function StatusBar() {
-    const { queryTime, rowsPerPage, currentPage, totalRows } = useTableStore()
+    const { rowsPerPage, currentPage, tableData } = useTableStore()
     const { activeConnectionId, connections } = useConnectionStore()
     const activeConnection = connections.find(c => c.id === activeConnectionId)
 
-    const startRow = (currentPage - 1) * rowsPerPage + 1
+    const totalRows = tableData?.total_rows || 0
+    const startRow = totalRows > 0 ? (currentPage - 1) * rowsPerPage + 1 : 0
     const endRow = Math.min(currentPage * rowsPerPage, totalRows)
 
     return (
@@ -19,10 +20,6 @@ export function StatusBar() {
                         Connected to {activeConnection?.host || 'localhost'}:{activeConnection?.port || 5432}
                     </span>
                 </div>
-                <span className="text-muted-foreground">|</span>
-                <span className="text-muted-foreground">
-                    Query time: {queryTime}ms
-                </span>
             </div>
             <div className="flex items-center gap-4">
                 <span className="text-muted-foreground">

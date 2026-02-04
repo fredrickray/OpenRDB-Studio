@@ -37,6 +37,10 @@ pub struct ColumnInfo {
     pub data_type: Option<String>,
     pub is_nullable: bool,
     pub default_value: Option<String>,
+    #[serde(default)]
+    pub is_primary_key: bool,
+    #[serde(default)]
+    pub is_foreign_key: bool,
 }
 
 /// Result of executing a query

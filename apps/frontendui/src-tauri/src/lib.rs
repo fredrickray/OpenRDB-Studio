@@ -16,6 +16,8 @@ pub fn run() {
             ipc::command::list_connections,
             ipc::command::list_databases,
             ipc::command::list_tables,
+            ipc::command::list_columns,
+            ipc::command::get_table_data,
             ipc::command::execute_query,
         ])
         .setup(|app| {
