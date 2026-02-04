@@ -1,6 +1,4 @@
 import { WorkspaceSidebar } from "@/components/workspace/WorkspaceSidebar"
-import { DataTab } from "@/components/workspace/DataTab"
-import { StructureTab } from "@/components/workspace/StructureTab"
 import { StatusBar } from "@/components/workspace/StatusBar"
 import { QueryTabs } from "@/components/query/QueryTabs"
 import { QueryToolbar } from "@/components/query/QueryToolbar"
@@ -9,23 +7,27 @@ import { ResultsPanel } from "@/components/query/ResultsPanel"
 import { useTableStore } from "@/stores/tableStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Database, RefreshCw, Plus, Search, Bell, Table, Columns, Code, Eye } from "lucide-react"
+import { Database, RefreshCw, Search, Bell, Table, Columns, Code, Eye } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
 export function QueryEditorPage() {
-    const { databases, selectedDatabase, selectedTable, activeTab, setActiveTab, refreshData, totalRows } = useTableStore()
+    const {
+        selectedTable,
+        selectedSchema,
+        connectedDatabase,
+        setActiveTab,
+        refreshData
+    } = useTableStore()
     const navigate = useNavigate()
 
     const handleDataTab = () => {
         navigate('/workspace')
-        // Set tab after navigation to avoid race condition
         setTimeout(() => setActiveTab('data'), 0)
     }
 
     const handleStructureTab = () => {
         navigate('/workspace')
-        // Set tab after navigation to avoid race condition
         setTimeout(() => setActiveTab('structure'), 0)
     }
 
@@ -74,11 +76,19 @@ export function QueryEditorPage() {
                 {/* Breadcrumb and Actions */}
                 <div className="h-12 border-b border-border flex items-center justify-between px-4 bg-card/50">
                     <div className="flex items-center gap-2 text-sm">
-                        <span className="text-muted-foreground">Main_Cluster</span>
-                        <span className="text-muted-foreground">/</span>
-                        <span className="text-muted-foreground">{selectedDatabase}</span>
-                        <span className="text-muted-foreground">/</span>
-                        <span className="font-semibold">{selectedTable}</span>
+                        <span className="text-muted-foreground">{connectedDatabase || 'Database'}</span>
+                        {selectedSchema && (
+                            <>
+                                <span className="text-muted-foreground">/</span>
+                                <span className="text-muted-foreground">{selectedSchema}</span>
+                            </>
+                        )}
+                        {selectedTable && (
+                            <>
+                                <span className="text-muted-foreground">/</span>
+                                <span className="font-semibold">{selectedTable}</span>
+                            </>
+                        )}
                     </div>
                     <div className="flex items-center gap-2">
                         <Button variant="outline" size="sm" onClick={refreshData}>

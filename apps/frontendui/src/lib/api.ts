@@ -39,6 +39,23 @@ export interface DatabaseInfo {
     owner: string | null
 }
 
+export interface ColumnInfo {
+    name: string | null
+    data_type: string | null
+    is_nullable: boolean
+    default_value: string | null
+    is_primary_key: boolean
+    is_foreign_key: boolean
+}
+
+export interface TableDataResult {
+    columns: string[]
+    rows: (string | null)[][]
+    total_rows: number
+    page: number
+    limit: number
+}
+
 // Check if we're running in Tauri
 const isTauri = typeof window !== 'undefined' && '__TAURI__' in window
 
@@ -105,6 +122,20 @@ export const api = {
     },
 
     /**
+     * List columns for a specific table
+     */
+    async listColumns(connectionId: string, schema: string, table: string): Promise<ColumnInfo[]> {
+        return callTauri<ColumnInfo[]>('list_columns', { connectionId, schema, table })
+    },
+
+    /**
+     * Get paginated table data
+     */
+    async getTableData(connectionId: string, schema: string, table: string, page: number, limit: number): Promise<TableDataResult> {
+        return callTauri<TableDataResult>('get_table_data', { connectionId, schema, table, page, limit })
+    },
+
+    /**
      * Execute a SQL query
      */
     async executeQuery(connectionId: string, sql: string): Promise<QueryResult> {
@@ -125,3 +156,4 @@ export const api = {
         return callTauri<DatabaseInfo[]>('list_databases', { config })
     }
 }
+

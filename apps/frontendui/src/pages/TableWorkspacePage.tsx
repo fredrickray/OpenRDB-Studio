@@ -10,11 +10,18 @@ import { Link, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
 export function TableWorkspacePage() {
-    const { databases, selectedDatabase, selectedTable, activeTab, setActiveTab, refreshData, totalRows } = useTableStore()
+    const {
+        selectedTable,
+        selectedSchema,
+        connectedDatabase,
+        activeTab,
+        setActiveTab,
+        refreshData,
+        tableData
+    } = useTableStore()
     const navigate = useNavigate()
 
-    const selectedDb = databases.find(db => db.name === selectedDatabase)
-    const selectedTbl = selectedDb?.tables.find(t => t.name === selectedTable)
+    const totalRows = tableData?.total_rows || 0
 
     const handleSqlTab = () => {
         navigate('/query')
@@ -65,23 +72,31 @@ export function TableWorkspacePage() {
                 {/* Breadcrumb and Actions */}
                 <div className="h-12 border-b border-border flex items-center justify-between px-4 bg-card/50">
                     <div className="flex items-center gap-2 text-sm">
-                        <span className="text-muted-foreground">Main_Cluster</span>
-                        <span className="text-muted-foreground">/</span>
-                        <span className="text-muted-foreground">{selectedDatabase}</span>
-                        <span className="text-muted-foreground">/</span>
-                        <span className="font-semibold">{selectedTable}</span>
+                        <span className="text-muted-foreground">{connectedDatabase || 'Database'}</span>
+                        {selectedSchema && (
+                            <>
+                                <span className="text-muted-foreground">/</span>
+                                <span className="text-muted-foreground">{selectedSchema}</span>
+                            </>
+                        )}
+                        {selectedTable && (
+                            <>
+                                <span className="text-muted-foreground">/</span>
+                                <span className="font-semibold">{selectedTable}</span>
+                            </>
+                        )}
                         <span className="text-muted-foreground text-xs ml-2">
-                            Estimated {totalRows.toLocaleString()} rows
+                            {totalRows > 0 ? `${totalRows.toLocaleString()} rows` : 'Select a table'}
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={refreshData}>
+                        <Button variant="outline" size="sm" onClick={refreshData} disabled={!selectedTable}>
                             <RefreshCw className="w-3 h-3 mr-1" />
                             Refresh
                         </Button>
-                        <Button size="sm">
+                        <Button size="sm" disabled={!selectedTable}>
                             <Plus className="w-3 h-3 mr-1" />
-                            Insert Document
+                            Insert Row
                         </Button>
                     </div>
                 </div>

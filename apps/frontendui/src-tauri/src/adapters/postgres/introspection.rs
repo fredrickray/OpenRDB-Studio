@@ -52,6 +52,8 @@ pub async fn list_columns(
                 data_type: r.try_get("data_type").ok(),
                 is_nullable: is_nullable.as_deref() == Some("YES"),
                 default_value: r.try_get("column_default").ok(),
+                is_primary_key: false, // Not queried in this function
+                is_foreign_key: false, // Not queried in this function
             }
         })
         .collect())

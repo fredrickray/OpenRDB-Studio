@@ -1,5 +1,7 @@
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { useConnectionStore, type Connection } from "@/stores/connectionStore"
+import { useTableStore } from "@/stores/tableStore"
 import {
     Dialog,
     DialogContent,
@@ -11,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Database, Eye, EyeOff, Trash2, CheckCircle, Loader2, AlertCircle } from "lucide-react"
+import { Database, Eye, EyeOff, Trash2, CheckCircle, Loader2, AlertCircle, ArrowRight } from "lucide-react"
 import { api } from "@/lib/api"
 import type { DatabaseInfo } from "@/lib/api"
 
@@ -25,6 +27,11 @@ export function ConnectionModal() {
     const [databaseList, setDatabaseList] = useState<DatabaseInfo[]>([])
     const [isListingDatabases, setIsListingDatabases] = useState(false)
     const [listError, setListError] = useState<string | null>(null)
+    const [isConnecting, setIsConnecting] = useState(false)
+    const [connectError, setConnectError] = useState<string | null>(null)
+
+    const navigate = useNavigate()
+    const setActiveConnection = useTableStore((state) => state.setActiveConnection)
 
     const [formData, setFormData] = useState<Omit<Connection, 'id' | 'status'>>({
         name: editingConnection?.name || '',
@@ -140,6 +147,43 @@ export function ConnectionModal() {
         if (editingConnection) {
             deleteConnection(editingConnection.id)
             closeModal()
+        }
+    }
+
+    const handleConnectNow = async () => {
+        setIsConnecting(true)
+        setConnectError(null)
+
+        try {
+            const config = {
+                host: formData.host,
+                port: formData.port,
+                username: formData.username,
+                password: formData.password,
+                database: formData.database,
+                ssl_required: formData.sslRequired,
+            }
+
+            // First save the connection if it's new
+            if (!editingConnection) {
+                addConnection({ ...formData, status: 'connected' })
+            } else {
+                updateConnection(editingConnection.id, { ...formData, status: 'connected' })
+            }
+
+            // Establish the connection
+            const connectionInfo = await api.connect(config)
+
+            // Set the active connection in the table store
+            setActiveConnection(connectionInfo.id, formData.database)
+
+            // Close modal and navigate to workspace
+            closeModal()
+            navigate('/workspace')
+        } catch (error) {
+            setConnectError(error instanceof Error ? error.message : 'Failed to connect')
+        } finally {
+            setIsConnecting(false)
         }
     }
 
@@ -310,15 +354,37 @@ export function ConnectionModal() {
                     )}
                 </div>
 
+                {/* Connection Error Display */}
+                {connectError && (
+                    <div className="flex items-center gap-2 text-red-500 text-sm bg-red-500/10 px-3 py-2 rounded-md">
+                        <AlertCircle className="w-4 h-4" />
+                        <span>{connectError}</span>
+                    </div>
+                )}
+
                 {/* Footer */}
                 <div className="flex items-center gap-3">
-                    <Button onClick={handleSave} className="flex-1">
-                        Connect Now
+                    <Button
+                        onClick={handleConnectNow}
+                        className="flex-1"
+                        disabled={isConnecting || !formData.database}
+                    >
+                        {isConnecting ? (
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                Connecting...
+                            </>
+                        ) : (
+                            <>
+                                Connect Now
+                                <ArrowRight className="w-4 h-4 ml-2" />
+                            </>
+                        )}
                     </Button>
                     <Button
                         variant="outline"
                         onClick={handleTestConnection}
-                        disabled={testStatus === 'testing'}
+                        disabled={testStatus === 'testing' || isConnecting}
                     >
                         {testStatus === 'testing' ? (
                             <>
@@ -326,8 +392,15 @@ export function ConnectionModal() {
                                 Testing...
                             </>
                         ) : (
-                            'Test Connection'
+                            'Test'
                         )}
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        onClick={handleSave}
+                        disabled={isConnecting}
+                    >
+                        Save
                     </Button>
                     {editingConnection && (
                         <Button variant="ghost" size="icon" onClick={handleDelete}>

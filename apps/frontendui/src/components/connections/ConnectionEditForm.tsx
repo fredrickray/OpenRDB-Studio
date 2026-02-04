@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useConnectionStore, type Connection } from "@/stores/connectionStore"
+import { useTableStore } from "@/stores/tableStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Database, Eye, EyeOff, Trash2, CheckCircle, Loader2, Lock, Shield } from "lucide-react"
+import { Database, Eye, EyeOff, Trash2, CheckCircle, Loader2, Lock, Shield, AlertCircle } from "lucide-react"
 
 interface ConnectionEditFormProps {
     connection: Connection
@@ -13,9 +14,13 @@ interface ConnectionEditFormProps {
 
 export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
     const navigate = useNavigate()
-    const { updateConnection, deleteConnection, setActiveConnection } = useConnectionStore()
+    const { updateConnection, deleteConnection, setActiveConnection, connectToDatabase, testConnection } = useConnectionStore()
+    const setActiveTableConnection = useTableStore((state) => state.setActiveConnection)
     const [showPassword, setShowPassword] = useState(false)
     const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
+    const [testMessage, setTestMessage] = useState('')
+    const [isConnecting, setIsConnecting] = useState(false)
+    const [connectError, setConnectError] = useState('')
 
     const [formData, setFormData] = useState<Omit<Connection, 'id' | 'status'>>({
         name: connection.name,
@@ -42,17 +47,55 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
             color: connection.color,
         })
         setTestStatus('idle')
+        setTestMessage('')
+        setConnectError('')
     }, [connection])
 
     const handleTestConnection = async () => {
+        // Save form data first
+        updateConnection(connection.id, formData)
+
         setTestStatus('testing')
-        await new Promise(resolve => setTimeout(resolve, 1500))
-        setTestStatus('success')
+        setTestMessage('')
+
+        try {
+            const result = await testConnection(connection.id)
+            if (result.success) {
+                setTestStatus('success')
+                setTestMessage(`Connected! Server: ${result.server_version || 'PostgreSQL'}`)
+            } else {
+                setTestStatus('error')
+                setTestMessage(result.message || 'Connection failed')
+            }
+        } catch (error) {
+            setTestStatus('error')
+            setTestMessage(error instanceof Error ? error.message : 'Connection test failed')
+        }
     }
 
-    const handleConnect = () => {
-        updateConnection(connection.id, { ...formData, status: 'connected' })
-        navigate('/workspace')
+    const handleConnect = async () => {
+        // Save form data first
+        updateConnection(connection.id, formData)
+
+        setIsConnecting(true)
+        setConnectError('')
+
+        try {
+            const connectionInfo = await connectToDatabase(connection.id)
+
+            if (connectionInfo) {
+                // Set the active connection in the table store for workspace data fetching
+                setActiveTableConnection(connectionInfo.id, formData.database)
+                // Navigate to workspace on successful connection
+                navigate('/workspace')
+            } else {
+                setConnectError('Failed to connect to database')
+            }
+        } catch (error) {
+            setConnectError(error instanceof Error ? error.message : 'Connection failed')
+        } finally {
+            setIsConnecting(false)
+        }
     }
 
     const handleDelete = () => {
@@ -199,13 +242,24 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
 
                     {/* Action Buttons */}
                     <div className="flex items-center gap-3 pt-4">
-                        <Button onClick={handleConnect} className="flex-1 h-11">
-                            Connect Now
+                        <Button
+                            onClick={handleConnect}
+                            className="flex-1 h-11"
+                            disabled={isConnecting}
+                        >
+                            {isConnecting ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                    Connecting...
+                                </>
+                            ) : (
+                                'Connect Now'
+                            )}
                         </Button>
                         <Button
                             variant="outline"
                             onClick={handleTestConnection}
-                            disabled={testStatus === 'testing'}
+                            disabled={testStatus === 'testing' || isConnecting}
                             className="h-11"
                         >
                             {testStatus === 'testing' ? (
@@ -222,16 +276,31 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
                         </Button>
                     </div>
 
+                    {/* Connection Error */}
+                    {connectError && (
+                        <div className="flex items-center gap-3 text-red-500 text-sm bg-red-500/10 px-4 py-3 rounded-lg">
+                            <AlertCircle className="w-5 h-5" />
+                            <span>{connectError}</span>
+                        </div>
+                    )}
+
                     {/* Test Status */}
                     {testStatus === 'success' && (
                         <div className="flex items-center gap-3 text-green-500 text-sm bg-green-500/10 px-4 py-3 rounded-lg">
                             <CheckCircle className="w-5 h-5" />
                             <div>
                                 <span className="font-medium">Connection test successful</span>
-                                <p className="text-xs text-muted-foreground">
-                                    Server version: PostgreSQL 14.2 on x86_64-apple-darwin21.3.0
-                                </p>
+                                {testMessage && (
+                                    <p className="text-xs text-muted-foreground">{testMessage}</p>
+                                )}
                             </div>
+                        </div>
+                    )}
+
+                    {testStatus === 'error' && (
+                        <div className="flex items-center gap-3 text-red-500 text-sm bg-red-500/10 px-4 py-3 rounded-lg">
+                            <AlertCircle className="w-5 h-5" />
+                            <span>{testMessage || 'Connection test failed'}</span>
                         </div>
                     )}
                 </div>

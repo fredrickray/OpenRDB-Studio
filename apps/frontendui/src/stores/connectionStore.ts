@@ -35,7 +35,7 @@ interface ConnectionStore {
 
     // Backend integration actions
     testConnection: (id: string) => Promise<ConnectionTestResult>
-    connectToDatabase: (id: string) => Promise<boolean>
+    connectToDatabase: (id: string) => Promise<ConnectionInfo | null>
     disconnectFromDatabase: (id: string) => Promise<boolean>
     listDatabases: (id: string) => Promise<{ success: boolean; databases: DatabaseInfo[]; message?: string }>
 }
@@ -183,7 +183,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     // Connect to database
     connectToDatabase: async (id) => {
         const connection = get().connections.find((c) => c.id === id)
-        if (!connection) return false
+        if (!connection) return null
 
         // Set status to connecting
         set((state) => ({
@@ -205,7 +205,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
                 activeConnectionId: id,
             }))
 
-            return true
+            return info
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
             set((state) => ({
@@ -213,7 +213,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
                     c.id === id ? { ...c, status: 'error' as const, errorMessage: message } : c
                 ),
             }))
-            return false
+            return null
         }
     },
 
