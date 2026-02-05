@@ -2,10 +2,154 @@ import { useTableStore } from "@/stores/tableStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { ChevronLeft, ChevronRight, RefreshCw, Loader2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, RefreshCw, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Plus, Trash2, X, Check, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useState } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
+import { api } from "@/lib/api"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+
+// Editable cell component
+function EditableCell({
+    value,
+    onSave,
+    column,
+    isEditing,
+    onStartEdit,
+    onCancelEdit
+}: {
+    value: string | null
+    onSave: (newValue: string | null) => Promise<void>
+    column: string
+    isEditing: boolean
+    onStartEdit: () => void
+    onCancelEdit: () => void
+}) {
+    const [editValue, setEditValue] = useState(value ?? '')
+    const [isSaving, setIsSaving] = useState(false)
+    const inputRef = useRef<HTMLInputElement>(null)
+
+    useEffect(() => {
+        if (isEditing && inputRef.current) {
+            inputRef.current.focus()
+            inputRef.current.select()
+        }
+    }, [isEditing])
+
+    useEffect(() => {
+        setEditValue(value ?? '')
+    }, [value])
+
+    const handleSave = async () => {
+        setIsSaving(true)
+        try {
+            const newValue = editValue.trim() === '' ? null : editValue
+            await onSave(newValue)
+            onCancelEdit()
+        } catch (error) {
+            console.error('Failed to save cell:', error)
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleSave()
+        } else if (e.key === 'Escape') {
+            setEditValue(value ?? '')
+            onCancelEdit()
+        }
+    }
+
+    if (isEditing) {
+        return (
+            <div className="flex items-center gap-1 -m-1">
+                <Input
+                    ref={inputRef}
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    onBlur={() => {
+                        // Delay to allow button clicks to register
+                        setTimeout(() => {
+                            if (!isSaving) {
+                                setEditValue(value ?? '')
+                                onCancelEdit()
+                            }
+                        }, 150)
+                    }}
+                    className="h-7 text-sm px-2 w-full min-w-[100px]"
+                    disabled={isSaving}
+                />
+                <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 text-green-500"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                >
+                    {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                </Button>
+                <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 text-muted-foreground"
+                    onClick={() => {
+                        setEditValue(value ?? '')
+                        onCancelEdit()
+                    }}
+                    disabled={isSaving}
+                >
+                    <X className="w-3 h-3" />
+                </Button>
+            </div>
+        )
+    }
+
+    // Display mode
+    if (value === null) {
+        return (
+            <span
+                className="text-muted-foreground italic cursor-pointer hover:bg-muted/50 px-1 -mx-1 rounded"
+                onDoubleClick={onStartEdit}
+            >
+                NULL
+            </span>
+        )
+    }
+
+    if (value === 'true' || value === 'false') {
+        return (
+            <span
+                className={cn(
+                    "px-2 py-0.5 rounded text-xs font-medium cursor-pointer",
+                    value === 'true' ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                )}
+                onDoubleClick={onStartEdit}
+            >
+                {value.toUpperCase()}
+            </span>
+        )
+    }
+
+    return (
+        <span
+            title={value}
+            className="cursor-pointer hover:bg-muted/50 px-1 -mx-1 rounded"
+            onDoubleClick={onStartEdit}
+        >
+            {value}
+        </span>
+    )
+}
 
 export function DataTab() {
     const {
@@ -19,10 +163,20 @@ export function DataTab() {
         setRowsPerPage,
         refreshData,
         isLoadingData,
-        selectedTable
+        selectedTable,
+        selectedSchema,
+        activeConnectionId,
+        sortColumn,
+        sortDirection,
+        setSorting
     } = useTableStore()
 
     const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
+    const [editingCell, setEditingCell] = useState<{ rowIdx: number, colIdx: number } | null>(null)
+    const [showInsertDialog, setShowInsertDialog] = useState(false)
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+    const [insertValues, setInsertValues] = useState<Record<string, string>>({})
+    const [isOperating, setIsOperating] = useState(false)
 
     const totalRows = tableData?.total_rows || 0
     const rows = tableData?.rows || []
@@ -31,6 +185,11 @@ export function DataTab() {
     const startRow = rows.length > 0 ? (currentPage - 1) * rowsPerPage + 1 : 0
     const endRow = Math.min(currentPage * rowsPerPage, totalRows)
     const totalPages = Math.ceil(totalRows / rowsPerPage)
+
+    // Find primary key column
+    const pkColumn = columns.find(c => c.is_primary_key)
+    const pkColumnName = pkColumn?.name || columnNames[0]
+    const pkColumnIndex = columnNames.findIndex(c => c === pkColumnName)
 
     const toggleRow = (idx: number) => {
         const next = new Set(selectedRows)
@@ -51,9 +210,84 @@ export function DataTab() {
         setRowsPerPage(parseInt(e.target.value, 10))
     }
 
-    // Find column info for a specific column name
     const getColumnInfo = (colName: string) => {
         return columns.find(c => c.name === colName)
+    }
+
+    // Cell update handler
+    const handleCellUpdate = useCallback(async (rowIdx: number, colIdx: number, newValue: string | null) => {
+        if (!activeConnectionId || !selectedSchema || !selectedTable || !pkColumnName) return
+
+        const row = rows[rowIdx]
+        const pkValue = row[pkColumnIndex]
+        const column = columnNames[colIdx]
+
+        if (pkValue === null) {
+            throw new Error('Cannot update row without primary key value')
+        }
+
+        await api.updateRow(
+            activeConnectionId,
+            selectedSchema,
+            selectedTable,
+            pkColumnName,
+            pkValue,
+            column,
+            newValue
+        )
+
+        await refreshData()
+    }, [activeConnectionId, selectedSchema, selectedTable, pkColumnName, pkColumnIndex, columnNames, rows, refreshData])
+
+    // Insert row handler
+    const handleInsertRow = async () => {
+        if (!activeConnectionId || !selectedSchema || !selectedTable) return
+
+        setIsOperating(true)
+        try {
+            const cols = Object.keys(insertValues).filter(k => insertValues[k].trim() !== '')
+            const vals = cols.map(k => insertValues[k].trim() || null)
+
+            if (cols.length === 0) {
+                throw new Error('Please fill in at least one field')
+            }
+
+            await api.insertRow(activeConnectionId, selectedSchema, selectedTable, cols, vals)
+            await refreshData()
+            setShowInsertDialog(false)
+            setInsertValues({})
+        } catch (error) {
+            console.error('Failed to insert row:', error)
+            alert(error instanceof Error ? error.message : 'Failed to insert row')
+        } finally {
+            setIsOperating(false)
+        }
+    }
+
+    // Delete rows handler
+    const handleDeleteRows = async () => {
+        if (!activeConnectionId || !selectedSchema || !selectedTable || !pkColumnName) return
+
+        setIsOperating(true)
+        try {
+            const pkValues = Array.from(selectedRows)
+                .map(idx => rows[idx]?.[pkColumnIndex])
+                .filter((v): v is string => v !== null && v !== undefined)
+
+            if (pkValues.length === 0) {
+                throw new Error('No valid rows selected for deletion')
+            }
+
+            await api.deleteRows(activeConnectionId, selectedSchema, selectedTable, pkColumnName, pkValues)
+            await refreshData()
+            setSelectedRows(new Set())
+            setShowDeleteDialog(false)
+        } catch (error) {
+            console.error('Failed to delete rows:', error)
+            alert(error instanceof Error ? error.message : 'Failed to delete rows')
+        } finally {
+            setIsOperating(false)
+        }
     }
 
     if (!selectedTable) {
@@ -66,15 +300,39 @@ export function DataTab() {
 
     return (
         <div className="flex flex-col h-full">
-            {/* Filter Bar */}
+            {/* Toolbar */}
             <div className="p-3 border-b border-border flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1"
+                        onClick={() => {
+                            setInsertValues({})
+                            setShowInsertDialog(true)
+                        }}
+                    >
+                        <Plus className="w-4 h-4" />
+                        Insert Row
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1 text-destructive hover:text-destructive"
+                        disabled={selectedRows.size === 0}
+                        onClick={() => setShowDeleteDialog(true)}
+                    >
+                        <Trash2 className="w-4 h-4" />
+                        Delete ({selectedRows.size})
+                    </Button>
+                </div>
                 <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground font-medium">FILTER</span>
                     <Input
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
                         placeholder="WHERE clause..."
-                        className="w-80 h-8 text-sm bg-input font-mono"
+                        className="w-60 h-8 text-sm bg-input font-mono"
                     />
                 </div>
                 <div className="flex-1" />
@@ -106,7 +364,20 @@ export function DataTab() {
             {/* Empty State */}
             {!isLoadingData && rows.length === 0 && (
                 <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                    <p>No data in this table</p>
+                    <div className="text-center">
+                        <p className="mb-2">No data in this table</p>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                                setInsertValues({})
+                                setShowInsertDialog(true)
+                            }}
+                        >
+                            <Plus className="w-4 h-4 mr-1" />
+                            Insert First Row
+                        </Button>
+                    </div>
                 </div>
             )}
 
@@ -124,12 +395,28 @@ export function DataTab() {
                                 </th>
                                 {columnNames.map((colName) => {
                                     const colInfo = getColumnInfo(colName)
+                                    const isSorted = sortColumn === colName
                                     return (
-                                        <th key={colName} className="p-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">
-                                            <div className="flex items-center gap-1">
+                                        <th
+                                            key={colName}
+                                            className="p-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap cursor-pointer hover:bg-muted/50 transition-colors select-none"
+                                            onClick={() => setSorting(colName)}
+                                        >
+                                            <div className="flex items-center gap-1.5">
                                                 {colInfo?.is_primary_key && <span className="text-yellow-400">⚿</span>}
                                                 {colInfo?.is_foreign_key && <span className="text-blue-400">↗</span>}
-                                                {colName.toUpperCase()}
+                                                <span className={cn(isSorted && "text-primary font-semibold")}>
+                                                    {colName.toUpperCase()}
+                                                </span>
+                                                {isSorted ? (
+                                                    sortDirection === 'asc' ? (
+                                                        <ArrowUp className="w-3 h-3 text-primary" />
+                                                    ) : (
+                                                        <ArrowDown className="w-3 h-3 text-primary" />
+                                                    )
+                                                ) : (
+                                                    <ArrowUpDown className="w-3 h-3 opacity-30" />
+                                                )}
                                             </div>
                                         </th>
                                     )
@@ -153,18 +440,14 @@ export function DataTab() {
                                     </td>
                                     {row.map((cell, colIdx) => (
                                         <td key={colIdx} className="p-3 whitespace-nowrap">
-                                            {cell === null ? (
-                                                <span className="text-muted-foreground italic">NULL</span>
-                                            ) : cell === 'true' || cell === 'false' ? (
-                                                <span className={cn(
-                                                    "px-2 py-0.5 rounded text-xs font-medium",
-                                                    cell === 'true' ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
-                                                )}>
-                                                    {cell.toUpperCase()}
-                                                </span>
-                                            ) : (
-                                                <span title={cell}>{cell}</span>
-                                            )}
+                                            <EditableCell
+                                                value={cell}
+                                                column={columnNames[colIdx]}
+                                                isEditing={editingCell?.rowIdx === rowIdx && editingCell?.colIdx === colIdx}
+                                                onStartEdit={() => setEditingCell({ rowIdx, colIdx })}
+                                                onCancelEdit={() => setEditingCell(null)}
+                                                onSave={(newValue) => handleCellUpdate(rowIdx, colIdx, newValue)}
+                                            />
                                         </td>
                                     ))}
                                 </tr>
@@ -218,6 +501,74 @@ export function DataTab() {
                     </Button>
                 </div>
             </div>
+
+            {/* Insert Row Dialog */}
+            <Dialog open={showInsertDialog} onOpenChange={setShowInsertDialog}>
+                <DialogContent className="max-w-md max-h-[80vh] overflow-auto">
+                    <DialogHeader>
+                        <DialogTitle>Insert New Row</DialogTitle>
+                        <DialogDescription>
+                            Fill in the values for the new row. Leave fields blank for NULL.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3 py-4">
+                        {columns.map((col) => (
+                            <div key={col.name} className="grid grid-cols-3 items-center gap-4">
+                                <Label className="text-right text-sm">
+                                    {col.is_primary_key && <span className="text-yellow-400 mr-1">⚿</span>}
+                                    {col.name}
+                                </Label>
+                                <Input
+                                    className="col-span-2"
+                                    placeholder={col.data_type || 'value'}
+                                    value={insertValues[col.name || ''] || ''}
+                                    onChange={(e) => setInsertValues({
+                                        ...insertValues,
+                                        [col.name || '']: e.target.value
+                                    })}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowInsertDialog(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={handleInsertRow} disabled={isOperating}>
+                            {isOperating ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                            Insert
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-destructive">
+                            <AlertTriangle className="w-5 h-5" />
+                            Delete {selectedRows.size} row(s)?
+                        </DialogTitle>
+                        <DialogDescription>
+                            This action cannot be undone. The selected rows will be permanently deleted from the database.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={handleDeleteRows}
+                            disabled={isOperating}
+                        >
+                            {isOperating ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                            Delete
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

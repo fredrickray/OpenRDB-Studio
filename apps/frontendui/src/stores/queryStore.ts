@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { api } from '@/lib/api'
+import { useTableStore } from '@/stores/tableStore'
 
 export interface QueryTab {
     id: string
@@ -9,7 +11,7 @@ export interface QueryTab {
 
 export interface QueryResult {
     columns: string[]
-    rows: string[][]
+    rows: (string | null)[][]
     rowCount: number
     executionTime: number
     error?: string
@@ -36,37 +38,20 @@ interface QueryStore {
     clearResults: (tabId: string) => void
 }
 
-// Sample data for demo
-const sampleResults: QueryResult = {
-    columns: ['order_id', 'order_id', 'username', 'email', 'total_amount', 'status'],
-    rows: [
-        ['10942', '1840_qbb', 'john_doe', 'john.doe@example.com', '$102.98', 'COMPLETE'],
-        ['10943', '1820-3840', 'sarah_smith', 's.smith@provider.net', '$87.50', 'COMPLETE'],
-        ['10944', 'a0de_oscer', 'mike_brown', 'm.brown@mail.com', '$1,209.00', 'COMPLETE'],
-        ['10945', '1840', 'alex_lee', 'alex@alexsite.io', '$56.30', 'COMPLETE'],
-    ],
-    rowCount: 4,
-    executionTime: 45,
-    timestamp: new Date(),
-}
-
 const defaultTab: QueryTab = {
     id: 'default',
-    name: 'user_report.sql',
-    sql: `-- Get all product orders with user details
-SELECT o.order_id, o.username, u.email, o.total_amount, o.status
-FROM orders_archive o
-JOIN auth_users u ON o.user_id = u.id
-WHERE o.status = 'completed'
-ORDER BY o.created_at DESC
-LIMIT 1000;`,
+    name: 'Query 1',
+    sql: `-- Write your SQL query here
+SELECT * FROM information_schema.tables
+WHERE table_schema = 'public'
+LIMIT 10;`,
     isModified: false,
 }
 
 export const useQueryStore = create<QueryStore>((set, get) => ({
     tabs: [defaultTab],
     activeTabId: 'default',
-    results: { default: sampleResults },
+    results: {},
     isExecuting: false,
     executingTabId: null,
 
@@ -75,7 +60,7 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
         const tabNumber = get().tabs.length + 1
         const newTab: QueryTab = {
             id,
-            name: `Scratchpad ${tabNumber}`,
+            name: `Query ${tabNumber}`,
             sql: '',
             isModified: false,
         }
@@ -117,35 +102,70 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
         })),
 
     executeQuery: async (tabId) => {
-        set({ isExecuting: true, executingTabId: tabId })
-
-        // Simulate query execution
-        await new Promise((resolve) => setTimeout(resolve, 1500))
-
-        const tab = get().tabs.find((t) => t.id === tabId)
-        if (!tab) {
-            set({ isExecuting: false, executingTabId: null })
+        // Get the connection ID from tableStore
+        const connectionId = useTableStore.getState().activeConnectionId
+        if (!connectionId) {
+            const errorResult: QueryResult = {
+                columns: [],
+                rows: [],
+                rowCount: 0,
+                executionTime: 0,
+                error: 'No database connection. Please connect to a database first.',
+                timestamp: new Date(),
+            }
+            set((state) => ({
+                results: { ...state.results, [tabId]: errorResult },
+            }))
             return
         }
 
-        // Mock result based on query
-        const result: QueryResult = {
-            columns: ['id', 'name', 'email', 'created_at'],
-            rows: [
-                ['1', 'John Doe', 'john@example.com', '2024-01-15'],
-                ['2', 'Jane Smith', 'jane@example.com', '2024-01-16'],
-                ['3', 'Bob Wilson', 'bob@example.com', '2024-01-17'],
-            ],
-            rowCount: 3,
-            executionTime: Math.floor(Math.random() * 100) + 10,
-            timestamp: new Date(),
+        const tab = get().tabs.find((t) => t.id === tabId)
+        if (!tab || !tab.sql.trim()) {
+            return
         }
 
-        set((state) => ({
-            isExecuting: false,
-            executingTabId: null,
-            results: { ...state.results, [tabId]: result },
-        }))
+        set({ isExecuting: true, executingTabId: tabId })
+        const startTime = performance.now()
+
+        try {
+            const apiResult = await api.executeQuery(connectionId, tab.sql)
+            const executionTime = Math.round(performance.now() - startTime)
+
+            // Convert null values to display properly
+            const rows = apiResult.rows.map(row =>
+                row.map(cell => cell ?? null)
+            )
+
+            const result: QueryResult = {
+                columns: apiResult.columns,
+                rows,
+                rowCount: apiResult.rows.length,
+                executionTime,
+                timestamp: new Date(),
+            }
+
+            set((state) => ({
+                isExecuting: false,
+                executingTabId: null,
+                results: { ...state.results, [tabId]: result },
+            }))
+        } catch (error) {
+            const executionTime = Math.round(performance.now() - startTime)
+            const errorResult: QueryResult = {
+                columns: [],
+                rows: [],
+                rowCount: 0,
+                executionTime,
+                error: error instanceof Error ? error.message : String(error),
+                timestamp: new Date(),
+            }
+
+            set((state) => ({
+                isExecuting: false,
+                executingTabId: null,
+                results: { ...state.results, [tabId]: errorResult },
+            }))
+        }
     },
 
     cancelQuery: () => {

@@ -43,6 +43,10 @@ interface TableStore {
     currentPage: number
     rowsPerPage: number
 
+    // Sorting
+    sortColumn: string | null
+    sortDirection: 'asc' | 'desc'
+
     // UI State
     activeTab: 'data' | 'structure' | 'sql'
     filter: string
@@ -62,6 +66,7 @@ interface TableStore {
     setCurrentPage: (page: number) => void
     setRowsPerPage: (rows: number) => void
     setFilter: (filter: string) => void
+    setSorting: (column: string) => void
     refreshData: () => Promise<void>
 }
 
@@ -81,6 +86,10 @@ export const useTableStore = create<TableStore>((set, get) => ({
     currentPage: 1,
     rowsPerPage: 20,
 
+    // Sorting
+    sortColumn: null,
+    sortDirection: 'asc',
+
     // UI State
     activeTab: 'data',
     filter: '',
@@ -98,6 +107,8 @@ export const useTableStore = create<TableStore>((set, get) => ({
             selectedSchema: null,
             columns: [],
             tableData: null,
+            sortColumn: null,
+            sortDirection: 'asc',
             error: null
         })
         // Auto-fetch tables
@@ -113,6 +124,8 @@ export const useTableStore = create<TableStore>((set, get) => ({
             selectedSchema: null,
             columns: [],
             tableData: null,
+            sortColumn: null,
+            sortDirection: 'asc',
             error: null
         })
     },
@@ -145,7 +158,9 @@ export const useTableStore = create<TableStore>((set, get) => ({
             selectedTable: table,
             currentPage: 1,
             columns: [],
-            tableData: null
+            tableData: null,
+            sortColumn: null,
+            sortDirection: 'asc'
         })
 
         if (schema && table) {
@@ -171,7 +186,7 @@ export const useTableStore = create<TableStore>((set, get) => ({
     },
 
     fetchTableData: async () => {
-        const { activeConnectionId, selectedSchema, selectedTable, currentPage, rowsPerPage } = get()
+        const { activeConnectionId, selectedSchema, selectedTable, currentPage, rowsPerPage, sortColumn, sortDirection } = get()
         if (!activeConnectionId || !selectedSchema || !selectedTable) return
 
         set({ isLoadingData: true, error: null })
@@ -181,7 +196,9 @@ export const useTableStore = create<TableStore>((set, get) => ({
                 selectedSchema,
                 selectedTable,
                 currentPage,
-                rowsPerPage
+                rowsPerPage,
+                sortColumn || undefined,
+                sortColumn ? sortDirection : undefined
             )
             set({ tableData, isLoadingData: false })
         } catch (error) {
@@ -205,6 +222,20 @@ export const useTableStore = create<TableStore>((set, get) => ({
     },
 
     setFilter: (filter) => set({ filter }),
+
+    setSorting: (column: string) => {
+        const { sortColumn, sortDirection } = get()
+
+        // If clicking same column, toggle direction
+        if (sortColumn === column) {
+            set({ sortDirection: sortDirection === 'asc' ? 'desc' : 'asc' })
+        } else {
+            // New column, default to ascending
+            set({ sortColumn: column, sortDirection: 'asc' })
+        }
+
+        get().fetchTableData()
+    },
 
     refreshData: async () => {
         await get().fetchTableData()
