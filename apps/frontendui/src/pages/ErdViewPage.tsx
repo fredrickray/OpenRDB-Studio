@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { WorkspaceSidebar } from "@/components/workspace/WorkspaceSidebar"
 import { ErdView } from "@/components/workspace/ErdView"
 import { StatusBar } from "@/components/workspace/StatusBar"
@@ -11,6 +12,10 @@ import { cn } from "@/lib/utils"
 export function ErdViewPage() {
     const { connectedDatabase, selectedTable, setActiveTab } = useTableStore()
     const navigate = useNavigate()
+
+    // Sidebar state
+    const [sidebarWidth, setSidebarWidth] = useState(256)
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
     const handleDataTab = () => {
         navigate('/workspace')
@@ -29,7 +34,12 @@ export function ErdViewPage() {
     return (
         <div className="flex h-screen bg-background">
             {/* Sidebar */}
-            <WorkspaceSidebar />
+            <WorkspaceSidebar
+                width={sidebarWidth}
+                isCollapsed={sidebarCollapsed}
+                onWidthChange={setSidebarWidth}
+                onCollapsedChange={setSidebarCollapsed}
+            />
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col overflow-hidden">

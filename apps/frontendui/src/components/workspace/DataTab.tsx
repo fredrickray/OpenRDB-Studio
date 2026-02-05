@@ -112,11 +112,11 @@ export function DataTab() {
 
             {/* Data Grid */}
             {rows.length > 0 && (
-                <ScrollArea className="flex-1">
-                    <table className="w-full text-sm">
-                        <thead className="bg-muted/30 sticky top-0">
+                <div className="flex-1 overflow-auto">
+                    <table className="w-full text-sm min-w-max">
+                        <thead className="bg-muted/30 sticky top-0 z-10">
                             <tr className="border-b border-border">
-                                <th className="w-10 p-3 text-left">
+                                <th className="w-10 p-3 text-left sticky left-0 bg-muted/30">
                                     <Checkbox
                                         checked={selectedRows.size === rows.length && rows.length > 0}
                                         onCheckedChange={toggleAll}
@@ -145,14 +145,14 @@ export function DataTab() {
                                         selectedRows.has(rowIdx) && "bg-primary/10"
                                     )}
                                 >
-                                    <td className="p-3">
+                                    <td className="p-3 sticky left-0 bg-background">
                                         <Checkbox
                                             checked={selectedRows.has(rowIdx)}
                                             onCheckedChange={() => toggleRow(rowIdx)}
                                         />
                                     </td>
                                     {row.map((cell, colIdx) => (
-                                        <td key={colIdx} className="p-3 whitespace-nowrap max-w-xs truncate">
+                                        <td key={colIdx} className="p-3 whitespace-nowrap">
                                             {cell === null ? (
                                                 <span className="text-muted-foreground italic">NULL</span>
                                             ) : cell === 'true' || cell === 'false' ? (
@@ -171,7 +171,7 @@ export function DataTab() {
                             ))}
                         </tbody>
                     </table>
-                </ScrollArea>
+                </div>
             )}
 
             {/* Pagination */}

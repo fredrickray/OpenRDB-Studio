@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { WorkspaceSidebar } from "@/components/workspace/WorkspaceSidebar"
 import { StatusBar } from "@/components/workspace/StatusBar"
 import { QueryTabs } from "@/components/query/QueryTabs"
@@ -21,6 +22,10 @@ export function QueryEditorPage() {
     } = useTableStore()
     const navigate = useNavigate()
 
+    // Sidebar state
+    const [sidebarWidth, setSidebarWidth] = useState(256)
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
     const handleDataTab = () => {
         navigate('/workspace')
         setTimeout(() => setActiveTab('data'), 0)
@@ -38,7 +43,12 @@ export function QueryEditorPage() {
     return (
         <div className="flex h-screen bg-background">
             {/* Sidebar */}
-            <WorkspaceSidebar />
+            <WorkspaceSidebar
+                width={sidebarWidth}
+                isCollapsed={sidebarCollapsed}
+                onWidthChange={setSidebarWidth}
+                onCollapsedChange={setSidebarCollapsed}
+            />
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col overflow-hidden">
