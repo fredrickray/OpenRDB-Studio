@@ -231,6 +231,20 @@ export const api = {
             pkColumn,
             pkValues
         })
+    },
+
+    /**
+     * Save connection configurations to disk
+     */
+    async saveConnections(connectionsJson: string): Promise<boolean> {
+        return callTauri<boolean>('save_connections', { connectionsJson })
+    },
+
+    /**
+     * Load saved connection configurations from disk
+     */
+    async loadConnections(): Promise<string> {
+        return callTauri<string>('load_connections')
     }
 }
 

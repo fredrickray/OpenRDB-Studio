@@ -1,4 +1,4 @@
-use tauri::{command, State};
+use tauri::{command, State, AppHandle, Manager};
 use crate::state::AppState;
 use crate::adapters::postgres::{
     ConnectionConfig, ConnectionTestResult, ConnectionInfo, 
@@ -6,6 +6,8 @@ use crate::adapters::postgres::{
     list_tables as db_list_tables, execute_query as db_execute_query
 };
 use sqlx::Row;
+use std::fs;
+use std::path::PathBuf;
 
 /// Test a PostgreSQL connection without storing it
 #[command]
@@ -514,4 +516,58 @@ pub async fn delete_rows(
         .map_err(|e| format!("Failed to delete rows: {}", e))?;
     
     Ok(result.rows_affected() as i32)
+}
+
+/// Get the path to the saved connections JSON file
+fn get_connections_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    
+    // Ensure the directory exists
+    fs::create_dir_all(&data_dir)
+        .map_err(|e| format!("Failed to create data directory: {}", e))?;
+    
+    Ok(data_dir.join("connections.json"))
+}
+
+/// Save connection configurations to disk
+#[command]
+pub async fn save_connections(
+    connections_json: String,
+    app: AppHandle,
+) -> Result<bool, String> {
+    let path = get_connections_path(&app)?;
+    
+    // Validate it's valid JSON before saving
+    serde_json::from_str::<serde_json::Value>(&connections_json)
+        .map_err(|e| format!("Invalid JSON: {}", e))?;
+    
+    fs::write(&path, &connections_json)
+        .map_err(|e| format!("Failed to save connections: {}", e))?;
+    
+    Ok(true)
+}
+
+/// Load saved connection configurations from disk
+#[command]
+pub async fn load_connections(
+    app: AppHandle,
+) -> Result<String, String> {
+    let path = get_connections_path(&app)?;
+    
+    if !path.exists() {
+        // No saved connections yet, return empty array
+        return Ok("[]".to_string());
+    }
+    
+    let content = fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read connections: {}", e))?;
+    
+    // Validate it's valid JSON
+    serde_json::from_str::<serde_json::Value>(&content)
+        .map_err(|e| format!("Invalid saved data: {}", e))?;
+    
+    Ok(content)
 }
