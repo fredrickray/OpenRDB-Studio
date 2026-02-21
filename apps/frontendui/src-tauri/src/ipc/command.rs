@@ -359,21 +359,65 @@ pub async fn update_row(
         .get_connection(&connection_id)
         .ok_or("Connection not found")?;
     
-    // Build parameterized UPDATE query
+    // Look up the target column's data type so we can cast properly
+    let type_query = format!(
+        "SELECT data_type FROM information_schema.columns WHERE table_schema = '{}' AND table_name = '{}' AND column_name = '{}'",
+        schema.replace('\'', "''"),
+        table.replace('\'', "''"),
+        column.replace('\'', "''")
+    );
+    let col_type: Option<String> = sqlx::query_scalar(&type_query)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| format!("Failed to get column type: {}", e))?;
+    
+    let data_type = col_type.unwrap_or_else(|| "text".to_string());
+    
+    // Build UPDATE query:
+    // - Cast PK column to text for reliable comparison with our string parameter
+    // - Cast new value from text to the column's actual data type
+    let set_clause = match new_value {
+        Some(ref _val) => format!(
+            "\"{}\" = $1::{}",
+            column.replace('"', "\"\""),
+            data_type
+        ),
+        None => format!(
+            "\"{}\" = NULL",
+            column.replace('"', "\"\"")
+        ),
+    };
+    
     let query = format!(
-        "UPDATE \"{}\".\"{}\" SET \"{}\" = $1 WHERE \"{}\" = $2",
+        "UPDATE \"{}\".\"{}\" SET {} WHERE \"{}\"::text = ${}",
         schema.replace('"', "\"\""),
         table.replace('"', "\"\""),
-        column.replace('"', "\"\""),
-        pk_column.replace('"', "\"\"")
+        set_clause,
+        pk_column.replace('"', "\"\""),
+        if new_value.is_some() { "2" } else { "1" }
     );
     
-    sqlx::query(&query)
-        .bind(&new_value)
-        .bind(&pk_value)
-        .execute(&pool)
-        .await
-        .map_err(|e| format!("Failed to update row: {}", e))?;
+    let result = match new_value {
+        Some(ref val) => {
+            sqlx::query(&query)
+                .bind(val)
+                .bind(&pk_value)
+                .execute(&pool)
+                .await
+        },
+        None => {
+            sqlx::query(&query)
+                .bind(&pk_value)
+                .execute(&pool)
+                .await
+        }
+    };
+    
+    let affected = result.map_err(|e| format!("Failed to update row: {}", e))?;
+    
+    if affected.rows_affected() == 0 {
+        return Err("No rows were updated. The row may have been deleted.".to_string());
+    }
     
     Ok(true)
 }
@@ -452,7 +496,7 @@ pub async fn delete_rows(
         .collect();
     
     let query = format!(
-        "DELETE FROM \"{}\".\"{}\" WHERE \"{}\" IN ({})",
+        "DELETE FROM \"{}\".\"{}\" WHERE \"{}\"::text IN ({})",
         schema.replace('"', "\"\""),
         table.replace('"', "\"\""),
         pk_column.replace('"', "\"\""),

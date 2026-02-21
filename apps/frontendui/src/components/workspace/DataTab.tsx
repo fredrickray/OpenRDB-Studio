@@ -34,12 +34,15 @@ function EditableCell({
 }) {
     const [editValue, setEditValue] = useState(value ?? '')
     const [isSaving, setIsSaving] = useState(false)
+    const [error, setError] = useState<string | null>(null)
     const inputRef = useRef<HTMLInputElement>(null)
+    const isSavingRef = useRef(false)
 
     useEffect(() => {
         if (isEditing && inputRef.current) {
             inputRef.current.focus()
             inputRef.current.select()
+            setError(null)
         }
     }, [isEditing])
 
@@ -48,20 +51,27 @@ function EditableCell({
     }, [value])
 
     const handleSave = async () => {
+        if (isSavingRef.current) return
+        isSavingRef.current = true
         setIsSaving(true)
+        setError(null)
         try {
             const newValue = editValue.trim() === '' ? null : editValue
             await onSave(newValue)
             onCancelEdit()
-        } catch (error) {
-            console.error('Failed to save cell:', error)
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to save'
+            setError(message)
+            console.error('Failed to save cell:', err)
         } finally {
+            isSavingRef.current = false
             setIsSaving(false)
         }
     }
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
+            e.preventDefault()
             handleSave()
         } else if (e.key === 'Escape') {
             setEditValue(value ?? '')
@@ -71,45 +81,56 @@ function EditableCell({
 
     if (isEditing) {
         return (
-            <div className="flex items-center gap-1 -m-1">
-                <Input
-                    ref={inputRef}
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    onBlur={() => {
-                        // Delay to allow button clicks to register
-                        setTimeout(() => {
-                            if (!isSaving) {
-                                setEditValue(value ?? '')
-                                onCancelEdit()
-                            }
-                        }, 150)
-                    }}
-                    className="h-7 text-sm px-2 w-full min-w-[100px]"
-                    disabled={isSaving}
-                />
-                <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 text-green-500"
-                    onClick={handleSave}
-                    disabled={isSaving}
-                >
-                    {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                </Button>
-                <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 text-muted-foreground"
-                    onClick={() => {
-                        setEditValue(value ?? '')
-                        onCancelEdit()
-                    }}
-                    disabled={isSaving}
-                >
-                    <X className="w-3 h-3" />
-                </Button>
+            <div className="flex flex-col gap-1 -m-1">
+                <div className="flex items-center gap-1">
+                    <Input
+                        ref={inputRef}
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        onBlur={() => {
+                            // Delay to allow button clicks to register
+                            setTimeout(() => {
+                                if (!isSavingRef.current) {
+                                    setEditValue(value ?? '')
+                                    setError(null)
+                                    onCancelEdit()
+                                }
+                            }, 250)
+                        }}
+                        className={cn("h-7 text-sm px-2 w-full min-w-[100px]", error && "border-destructive")}
+                        disabled={isSaving}
+                    />
+                    <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 shrink-0 text-green-500"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={handleSave}
+                        disabled={isSaving}
+                    >
+                        {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                    </Button>
+                    <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 shrink-0 text-muted-foreground"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                            setEditValue(value ?? '')
+                            setError(null)
+                            onCancelEdit()
+                        }}
+                        disabled={isSaving}
+                    >
+                        <X className="w-3 h-3" />
+                    </Button>
+                </div>
+                {error && (
+                    <span className="text-xs text-destructive max-w-[200px] truncate" title={error}>
+                        {error}
+                    </span>
+                )}
             </div>
         )
     }
