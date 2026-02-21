@@ -248,6 +248,8 @@ pub async fn get_table_data(
     table: String,
     page: i32,
     limit: i32,
+    sort_column: Option<String>,
+    sort_direction: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<TableDataResult, String> {
     let pool = state
@@ -258,7 +260,8 @@ pub async fn get_table_data(
     
     // Get total row count
     let count_query = format!(
-        "SELECT COUNT(*) as count FROM \"{}\".\"{}\"",
+        "SELECT COUNT(*) as count FROM \"{}\".\"{}\""
+,
         schema.replace('"', "\"\""),
         table.replace('"', "\"\"")
     );
@@ -290,12 +293,29 @@ pub async fn get_table_data(
         .map(|c| format!("\"{}\"::text", c.replace('"', "\"\"")))
         .collect();
     
+    // Build ORDER BY clause if sorting is requested
+    let order_by = if let Some(ref col) = sort_column {
+        // Validate column exists to prevent SQL injection
+        if columns.contains(col) {
+            let direction = match sort_direction.as_deref() {
+                Some("desc") | Some("DESC") => "DESC",
+                _ => "ASC",
+            };
+            format!(" ORDER BY \"{}\" {}", col.replace('"', "\"\""), direction)
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+    
     // Get actual data - cast all columns to text to avoid type issues
     let data_query = format!(
-        "SELECT {} FROM \"{}\".\"{}\" LIMIT {} OFFSET {}",
+        "SELECT {} FROM \"{}\".\"{}\"{}  LIMIT {} OFFSET {}",
         column_casts.join(", "),
         schema.replace('"', "\"\""),
         table.replace('"', "\"\""),
+        order_by,
         limit,
         offset
     );
@@ -321,4 +341,133 @@ pub async fn get_table_data(
         page,
         limit,
     })
+}
+
+/// Update a single cell in a table
+#[command]
+pub async fn update_row(
+    connection_id: String,
+    schema: String,
+    table: String,
+    pk_column: String,
+    pk_value: String,
+    column: String,
+    new_value: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    let pool = state
+        .get_connection(&connection_id)
+        .ok_or("Connection not found")?;
+    
+    // Build parameterized UPDATE query
+    let query = format!(
+        "UPDATE \"{}\".\"{}\" SET \"{}\" = $1 WHERE \"{}\" = $2",
+        schema.replace('"', "\"\""),
+        table.replace('"', "\"\""),
+        column.replace('"', "\"\""),
+        pk_column.replace('"', "\"\"")
+    );
+    
+    sqlx::query(&query)
+        .bind(&new_value)
+        .bind(&pk_value)
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("Failed to update row: {}", e))?;
+    
+    Ok(true)
+}
+
+/// Insert a new row into a table
+#[command]
+pub async fn insert_row(
+    connection_id: String,
+    schema: String,
+    table: String,
+    columns: Vec<String>,
+    values: Vec<Option<String>>,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    let pool = state
+        .get_connection(&connection_id)
+        .ok_or("Connection not found")?;
+    
+    if columns.is_empty() || columns.len() != values.len() {
+        return Err("Columns and values must be non-empty and have equal length".to_string());
+    }
+    
+    // Build column list
+    let col_list: Vec<String> = columns
+        .iter()
+        .map(|c| format!("\"{}\"", c.replace('"', "\"\"")))
+        .collect();
+    
+    // Build placeholder list ($1, $2, etc)
+    let placeholders: Vec<String> = (1..=values.len())
+        .map(|i| format!("${}", i))
+        .collect();
+    
+    let query = format!(
+        "INSERT INTO \"{}\".\"{}\" ({}) VALUES ({})",
+        schema.replace('"', "\"\""),
+        table.replace('"', "\"\""),
+        col_list.join(", "),
+        placeholders.join(", ")
+    );
+    
+    let mut query_builder = sqlx::query(&query);
+    for value in &values {
+        query_builder = query_builder.bind(value);
+    }
+    
+    query_builder
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("Failed to insert row: {}", e))?;
+    
+    Ok(true)
+}
+
+/// Delete rows from a table by primary key values
+#[command]
+pub async fn delete_rows(
+    connection_id: String,
+    schema: String,
+    table: String,
+    pk_column: String,
+    pk_values: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<i32, String> {
+    let pool = state
+        .get_connection(&connection_id)
+        .ok_or("Connection not found")?;
+    
+    if pk_values.is_empty() {
+        return Err("No rows specified for deletion".to_string());
+    }
+    
+    // Build placeholder list ($1, $2, etc)
+    let placeholders: Vec<String> = (1..=pk_values.len())
+        .map(|i| format!("${}", i))
+        .collect();
+    
+    let query = format!(
+        "DELETE FROM \"{}\".\"{}\" WHERE \"{}\" IN ({})",
+        schema.replace('"', "\"\""),
+        table.replace('"', "\"\""),
+        pk_column.replace('"', "\"\""),
+        placeholders.join(", ")
+    );
+    
+    let mut query_builder = sqlx::query(&query);
+    for pk in &pk_values {
+        query_builder = query_builder.bind(pk);
+    }
+    
+    let result = query_builder
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("Failed to delete rows: {}", e))?;
+    
+    Ok(result.rows_affected() as i32)
 }

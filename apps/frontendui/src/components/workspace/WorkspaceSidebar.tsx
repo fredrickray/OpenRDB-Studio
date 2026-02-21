@@ -1,12 +1,23 @@
-import { ChevronDown, ChevronRight, Database, Table, RefreshCw, Loader2, AlertCircle } from "lucide-react"
-import { useState, useEffect } from "react"
+import { ChevronDown, ChevronRight, Database, Table, RefreshCw, Loader2, AlertCircle, PanelLeftClose, PanelLeft, GripVertical } from "lucide-react"
+import { useState, useRef, useCallback } from "react"
 import { useTableStore } from "@/stores/tableStore"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { useNavigate } from "react-router-dom"
 
-export function WorkspaceSidebar() {
+interface WorkspaceSidebarProps {
+    width: number
+    isCollapsed: boolean
+    onWidthChange: (width: number) => void
+    onCollapsedChange: (collapsed: boolean) => void
+}
+
+const MIN_WIDTH = 180
+const MAX_WIDTH = 400
+const DEFAULT_WIDTH = 256
+
+export function WorkspaceSidebar({ width, isCollapsed, onWidthChange, onCollapsedChange }: WorkspaceSidebarProps) {
     const {
         tables,
         selectedTable,
@@ -21,6 +32,7 @@ export function WorkspaceSidebar() {
 
     const navigate = useNavigate()
     const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set(['public']))
+    const isResizing = useRef(false)
 
     // Group tables by schema
     const tablesBySchema = tables.reduce((acc, table) => {
@@ -45,9 +57,58 @@ export function WorkspaceSidebar() {
         navigate('/')
     }
 
+    // Resize handlers
+    const startResizing = useCallback((e: React.MouseEvent) => {
+        isResizing.current = true
+        e.preventDefault()
+
+        const startX = e.clientX
+        const startWidth = width
+
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isResizing.current) return
+            const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth + (e.clientX - startX)))
+            onWidthChange(newWidth)
+        }
+
+        const handleMouseUp = () => {
+            isResizing.current = false
+            document.removeEventListener('mousemove', handleMouseMove)
+            document.removeEventListener('mouseup', handleMouseUp)
+            document.body.style.cursor = ''
+            document.body.style.userSelect = ''
+        }
+
+        document.addEventListener('mousemove', handleMouseMove)
+        document.addEventListener('mouseup', handleMouseUp)
+        document.body.style.cursor = 'col-resize'
+        document.body.style.userSelect = 'none'
+    }, [width, onWidthChange])
+
+    // Collapsed state - show only toggle button
+    if (isCollapsed) {
+        return (
+            <div className="h-full bg-sidebar border-r border-border flex flex-col items-center py-2 w-10">
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="w-8 h-8"
+                    onClick={() => onCollapsedChange(false)}
+                    title="Expand sidebar"
+                >
+                    <PanelLeft className="w-4 h-4" />
+                </Button>
+            </div>
+        )
+    }
+
+    // No connection state
     if (!activeConnectionId) {
         return (
-            <div className="w-64 h-full bg-sidebar border-r border-border flex flex-col items-center justify-center p-4">
+            <div
+                className="h-full bg-sidebar border-r border-border flex flex-col items-center justify-center p-4 relative"
+                style={{ width: `${width}px` }}
+            >
                 <Database className="w-8 h-8 text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground text-center mb-4">
                     No active connection
@@ -55,16 +116,29 @@ export function WorkspaceSidebar() {
                 <Button onClick={handleNewConnection} size="sm">
                     Connect to Database
                 </Button>
+
+                {/* Resize handle */}
+                <div
+                    className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/50 transition-colors group"
+                    onMouseDown={startResizing}
+                >
+                    <div className="absolute top-1/2 -translate-y-1/2 right-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <GripVertical className="w-3 h-3 text-muted-foreground" />
+                    </div>
+                </div>
             </div>
         )
     }
 
     return (
-        <div className="w-64 h-full bg-sidebar border-r border-border flex flex-col">
+        <div
+            className="h-full bg-sidebar border-r border-border flex flex-col relative"
+            style={{ width: `${width}px`, minWidth: `${MIN_WIDTH}px` }}
+        >
             {/* Connection Header */}
-            <div className="p-3 border-b border-border">
+            <div className="p-3 border-b border-border shrink-0">
                 <div className="flex items-center gap-2 mb-3">
-                    <Database className="w-4 h-4 text-primary" />
+                    <Database className="w-4 h-4 text-primary shrink-0" />
                     <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">
                             {connectedDatabase || 'Connected'}
@@ -73,16 +147,25 @@ export function WorkspaceSidebar() {
                             {tables.length} tables
                         </p>
                     </div>
-                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                    <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
                 </div>
                 <div className="flex gap-2">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        onClick={() => onCollapsedChange(true)}
+                        title="Collapse sidebar"
+                    >
+                        <PanelLeftClose className="w-4 h-4" />
+                    </Button>
                     <Button variant="outline" size="sm" className="flex-1" onClick={handleNewConnection}>
                         Connections
                     </Button>
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8"
+                        className="h-8 w-8 shrink-0"
                         onClick={() => fetchTables()}
                         disabled={isLoadingTables}
                     >
@@ -97,10 +180,10 @@ export function WorkspaceSidebar() {
 
             {/* Error Display */}
             {error && (
-                <div className="p-2 bg-red-500/10 border-b border-red-500/20">
+                <div className="p-2 bg-red-500/10 border-b border-red-500/20 shrink-0">
                     <div className="flex items-start gap-2 text-red-500 text-xs">
                         <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
-                        <span>{error}</span>
+                        <span className="break-words">{error}</span>
                     </div>
                 </div>
             )}
@@ -115,7 +198,7 @@ export function WorkspaceSidebar() {
                 </div>
             )}
 
-            {/* Database Tree */}
+            {/* Empty State */}
             {!isLoadingTables && tables.length === 0 && !error && (
                 <div className="flex-1 flex items-center justify-center p-4">
                     <p className="text-sm text-muted-foreground text-center">
@@ -124,6 +207,7 @@ export function WorkspaceSidebar() {
                 </div>
             )}
 
+            {/* Database Tree */}
             {tables.length > 0 && (
                 <ScrollArea className="flex-1">
                     <div className="p-2">
@@ -135,13 +219,13 @@ export function WorkspaceSidebar() {
                                     className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-accent text-left"
                                 >
                                     {expandedSchemas.has(schema) ? (
-                                        <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                                        <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
                                     ) : (
-                                        <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                                        <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
                                     )}
-                                    <Database className="w-4 h-4 text-primary" />
+                                    <Database className="w-4 h-4 text-primary shrink-0" />
                                     <span className="flex-1 truncate">{schema}</span>
-                                    <span className="text-xs text-muted-foreground">
+                                    <span className="text-xs text-muted-foreground shrink-0">
                                         {schemaTables.length}
                                     </span>
                                 </button>
@@ -159,7 +243,7 @@ export function WorkspaceSidebar() {
                                                     "bg-primary/20 text-primary"
                                                 )}
                                             >
-                                                <Table className="w-3 h-3" />
+                                                <Table className="w-3 h-3 shrink-0" />
                                                 <span className="flex-1 truncate">{table.name}</span>
                                             </button>
                                         ))}
@@ -170,6 +254,16 @@ export function WorkspaceSidebar() {
                     </div>
                 </ScrollArea>
             )}
+
+            {/* Resize handle */}
+            <div
+                className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/50 transition-colors group"
+                onMouseDown={startResizing}
+            >
+                <div className="absolute top-1/2 -translate-y-1/2 right-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <GripVertical className="w-3 h-3 text-muted-foreground" />
+                </div>
+            </div>
         </div>
     )
 }

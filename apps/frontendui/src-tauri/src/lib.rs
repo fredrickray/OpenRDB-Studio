@@ -19,6 +19,9 @@ pub fn run() {
             ipc::command::list_columns,
             ipc::command::get_table_data,
             ipc::command::execute_query,
+            ipc::command::update_row,
+            ipc::command::insert_row,
+            ipc::command::delete_rows,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

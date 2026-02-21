@@ -131,8 +131,24 @@ export const api = {
     /**
      * Get paginated table data
      */
-    async getTableData(connectionId: string, schema: string, table: string, page: number, limit: number): Promise<TableDataResult> {
-        return callTauri<TableDataResult>('get_table_data', { connectionId, schema, table, page, limit })
+    async getTableData(
+        connectionId: string,
+        schema: string,
+        table: string,
+        page: number,
+        limit: number,
+        sortColumn?: string,
+        sortDirection?: 'asc' | 'desc'
+    ): Promise<TableDataResult> {
+        return callTauri<TableDataResult>('get_table_data', {
+            connectionId,
+            schema,
+            table,
+            page,
+            limit,
+            sortColumn: sortColumn || null,
+            sortDirection: sortDirection || null
+        })
     },
 
     /**
@@ -154,6 +170,67 @@ export const api = {
      */
     async listDatabases(config: ConnectionConfig): Promise<DatabaseInfo[]> {
         return callTauri<DatabaseInfo[]>('list_databases', { config })
+    },
+
+    /**
+     * Update a single cell in a table
+     */
+    async updateRow(
+        connectionId: string,
+        schema: string,
+        table: string,
+        pkColumn: string,
+        pkValue: string,
+        column: string,
+        newValue: string | null
+    ): Promise<boolean> {
+        return callTauri<boolean>('update_row', {
+            connectionId,
+            schema,
+            table,
+            pkColumn,
+            pkValue,
+            column,
+            newValue
+        })
+    },
+
+    /**
+     * Insert a new row into a table
+     */
+    async insertRow(
+        connectionId: string,
+        schema: string,
+        table: string,
+        columns: string[],
+        values: (string | null)[]
+    ): Promise<boolean> {
+        return callTauri<boolean>('insert_row', {
+            connectionId,
+            schema,
+            table,
+            columns,
+            values
+        })
+    },
+
+    /**
+     * Delete rows from a table by primary key values
+     */
+    async deleteRows(
+        connectionId: string,
+        schema: string,
+        table: string,
+        pkColumn: string,
+        pkValues: string[]
+    ): Promise<number> {
+        return callTauri<number>('delete_rows', {
+            connectionId,
+            schema,
+            table,
+            pkColumn,
+            pkValues
+        })
     }
 }
 
