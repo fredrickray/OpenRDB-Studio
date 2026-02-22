@@ -24,6 +24,9 @@ pub fn run() {
             ipc::command::delete_rows,
             ipc::command::save_connections,
             ipc::command::load_connections,
+            ipc::command::save_password,
+            ipc::command::get_password,
+            ipc::command::delete_password,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

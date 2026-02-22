@@ -571,3 +571,50 @@ pub async fn load_connections(
     
     Ok(content)
 }
+
+const KEYCHAIN_SERVICE: &str = "OpenRDB-Studio";
+
+/// Save a password to the OS keychain
+#[command]
+pub async fn save_password(
+    connection_id: String,
+    password: String,
+) -> Result<bool, String> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &connection_id)
+        .map_err(|e| format!("Failed to create keychain entry: {}", e))?;
+    
+    entry.set_password(&password)
+        .map_err(|e| format!("Failed to save password to keychain: {}", e))?;
+    
+    Ok(true)
+}
+
+/// Get a password from the OS keychain
+#[command]
+pub async fn get_password(
+    connection_id: String,
+) -> Result<Option<String>, String> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &connection_id)
+        .map_err(|e| format!("Failed to create keychain entry: {}", e))?;
+    
+    match entry.get_password() {
+        Ok(password) => Ok(Some(password)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(format!("Failed to get password from keychain: {}", e)),
+    }
+}
+
+/// Delete a password from the OS keychain
+#[command]
+pub async fn delete_password(
+    connection_id: String,
+) -> Result<bool, String> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &connection_id)
+        .map_err(|e| format!("Failed to create keychain entry: {}", e))?;
+    
+    match entry.delete_credential() {
+        Ok(()) => Ok(true),
+        Err(keyring::Error::NoEntry) => Ok(true), // Already gone, that's fine
+        Err(e) => Err(format!("Failed to delete password from keychain: {}", e)),
+    }
+}

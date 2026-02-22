@@ -19,14 +19,13 @@ export interface Connection {
     serverVersion?: string
 }
 
-// Fields to persist (exclude runtime-only fields)
+// Fields to persist to JSON (NO password — that goes in the OS keychain)
 interface SavedConnection {
     id: string
     name: string
     host: string
     port: number
     username: string
-    password: string
     database: string
     sslRequired: boolean
     readOnly: boolean
@@ -68,7 +67,7 @@ function toConnectionConfig(conn: Connection): ConnectionConfig {
     }
 }
 
-// Helper to convert Connection to saveable format (strip runtime fields)
+// Helper to convert Connection to saveable format (strip runtime fields AND password)
 function toSavedConnection(conn: Connection): SavedConnection {
     return {
         id: conn.id,
@@ -76,7 +75,6 @@ function toSavedConnection(conn: Connection): SavedConnection {
         host: conn.host,
         port: conn.port,
         username: conn.username,
-        password: conn.password,
         database: conn.database,
         sslRequired: conn.sslRequired,
         readOnly: conn.readOnly,
@@ -84,17 +82,19 @@ function toSavedConnection(conn: Connection): SavedConnection {
     }
 }
 
-// Helper to convert saved connection back to full Connection
-function fromSavedConnection(saved: SavedConnection): Connection {
-    return {
-        ...saved,
-        status: 'disconnected',
-    }
-}
-
-// Persist connections to disk (fire-and-forget)
+// Persist connections to disk + passwords to keychain
 async function persistToDisk(connections: Connection[]) {
     try {
+        // Save passwords to OS keychain 
+        await Promise.all(
+            connections.map(conn =>
+                api.savePassword(conn.id, conn.password).catch(err =>
+                    console.error(`Failed to save password for ${conn.name}:`, err)
+                )
+            )
+        )
+
+        // Save connection configs WITHOUT passwords to JSON file
         const saved = connections.map(toSavedConnection)
         await api.saveConnections(JSON.stringify(saved))
     } catch (error) {
@@ -109,12 +109,29 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     editingConnection: null,
     isLoaded: false,
 
-    // Load saved connections from disk
+    // Load saved connections from disk + passwords from keychain
     loadSavedConnections: async () => {
         try {
             const json = await api.loadConnections()
             const saved: SavedConnection[] = JSON.parse(json)
-            const connections = saved.map(fromSavedConnection)
+
+            // Retrieve passwords from keychain for each connection
+            const connections: Connection[] = await Promise.all(
+                saved.map(async (s): Promise<Connection> => {
+                    let password = ''
+                    try {
+                        password = await api.getPassword(s.id) || ''
+                    } catch (err) {
+                        console.error(`Failed to load password for ${s.name}:`, err)
+                    }
+                    return {
+                        ...s,
+                        password,
+                        status: 'disconnected',
+                    }
+                })
+            )
+
             set({ connections, isLoaded: true })
         } catch (error) {
             console.error('Failed to load connections:', error)
@@ -150,6 +167,11 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     },
 
     deleteConnection: (id) => {
+        // Delete password from keychain
+        api.deletePassword(id).catch(err =>
+            console.error('Failed to delete password from keychain:', err)
+        )
+
         set((state) => {
             const connections = state.connections.filter((conn) => conn.id !== id)
             persistToDisk(connections)
