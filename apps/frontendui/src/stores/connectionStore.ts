@@ -19,11 +19,26 @@ export interface Connection {
     serverVersion?: string
 }
 
+// Fields to persist (exclude runtime-only fields)
+interface SavedConnection {
+    id: string
+    name: string
+    host: string
+    port: number
+    username: string
+    password: string
+    database: string
+    sslRequired: boolean
+    readOnly: boolean
+    color: 'red' | 'yellow' | 'purple' | 'blue' | 'green'
+}
+
 interface ConnectionStore {
     connections: Connection[]
     activeConnectionId: string | null
     isModalOpen: boolean
     editingConnection: Connection | null
+    isLoaded: boolean
 
     // Actions
     addConnection: (conn: Omit<Connection, 'id'>) => void
@@ -32,6 +47,7 @@ interface ConnectionStore {
     setActiveConnection: (id: string | null) => void
     openModal: (conn?: Connection) => void
     closeModal: () => void
+    loadSavedConnections: () => Promise<void>
 
     // Backend integration actions
     testConnection: (id: string) => Promise<ConnectionTestResult>
@@ -39,49 +55,6 @@ interface ConnectionStore {
     disconnectFromDatabase: (id: string) => Promise<boolean>
     listDatabases: (id: string) => Promise<{ success: boolean; databases: DatabaseInfo[]; message?: string }>
 }
-
-// Sample connections for demo
-const sampleConnections: Connection[] = [
-    {
-        id: '1',
-        name: 'Local Postgres',
-        host: 'localhost',
-        port: 5432,
-        username: 'postgres',
-        password: 'password',
-        database: 'main_production',
-        sslRequired: false,
-        readOnly: false,
-        color: 'red',
-        status: 'disconnected',
-    },
-    {
-        id: '2',
-        name: 'Production MySQL',
-        host: '192.168.1.100',
-        port: 3306,
-        username: 'admin',
-        password: 'secret',
-        database: 'production_db',
-        sslRequired: true,
-        readOnly: false,
-        color: 'yellow',
-        status: 'disconnected',
-    },
-    {
-        id: '3',
-        name: 'AWS Staging Replica',
-        host: 'rds.example.aws.com',
-        port: 5432,
-        username: 'readonly',
-        password: 'readonly123',
-        database: 'staging',
-        sslRequired: true,
-        readOnly: true,
-        color: 'purple',
-        status: 'disconnected',
-    },
-]
 
 // Helper to convert store Connection to API ConnectionConfig
 function toConnectionConfig(conn: Connection): ConnectionConfig {
@@ -95,33 +68,98 @@ function toConnectionConfig(conn: Connection): ConnectionConfig {
     }
 }
 
+// Helper to convert Connection to saveable format (strip runtime fields)
+function toSavedConnection(conn: Connection): SavedConnection {
+    return {
+        id: conn.id,
+        name: conn.name,
+        host: conn.host,
+        port: conn.port,
+        username: conn.username,
+        password: conn.password,
+        database: conn.database,
+        sslRequired: conn.sslRequired,
+        readOnly: conn.readOnly,
+        color: conn.color,
+    }
+}
+
+// Helper to convert saved connection back to full Connection
+function fromSavedConnection(saved: SavedConnection): Connection {
+    return {
+        ...saved,
+        status: 'disconnected',
+    }
+}
+
+// Persist connections to disk (fire-and-forget)
+async function persistToDisk(connections: Connection[]) {
+    try {
+        const saved = connections.map(toSavedConnection)
+        await api.saveConnections(JSON.stringify(saved))
+    } catch (error) {
+        console.error('Failed to save connections:', error)
+    }
+}
+
 export const useConnectionStore = create<ConnectionStore>((set, get) => ({
-    connections: sampleConnections,
+    connections: [],
     activeConnectionId: null,
     isModalOpen: false,
     editingConnection: null,
+    isLoaded: false,
 
-    addConnection: (conn) =>
-        set((state) => ({
-            connections: [
-                ...state.connections,
-                { ...conn, id: crypto.randomUUID() },
-            ],
-        })),
+    // Load saved connections from disk
+    loadSavedConnections: async () => {
+        try {
+            const json = await api.loadConnections()
+            const saved: SavedConnection[] = JSON.parse(json)
+            const connections = saved.map(fromSavedConnection)
+            set({ connections, isLoaded: true })
+        } catch (error) {
+            console.error('Failed to load connections:', error)
+            set({ connections: [], isLoaded: true })
+        }
+    },
 
-    updateConnection: (id, updates) =>
-        set((state) => ({
-            connections: state.connections.map((conn) =>
+    addConnection: (conn) => {
+        const newConn = { ...conn, id: crypto.randomUUID() }
+        set((state) => {
+            const connections = [...state.connections, newConn]
+            persistToDisk(connections)
+            return { connections }
+        })
+    },
+
+    updateConnection: (id, updates) => {
+        set((state) => {
+            const connections = state.connections.map((conn) =>
                 conn.id === id ? { ...conn, ...updates } : conn
-            ),
-        })),
+            )
+            // Only persist if non-runtime fields changed
+            const hasConfigChange = updates.name !== undefined || updates.host !== undefined ||
+                updates.port !== undefined || updates.username !== undefined ||
+                updates.password !== undefined || updates.database !== undefined ||
+                updates.sslRequired !== undefined || updates.readOnly !== undefined ||
+                updates.color !== undefined
+            if (hasConfigChange) {
+                persistToDisk(connections)
+            }
+            return { connections }
+        })
+    },
 
-    deleteConnection: (id) =>
-        set((state) => ({
-            connections: state.connections.filter((conn) => conn.id !== id),
-            activeConnectionId:
-                state.activeConnectionId === id ? null : state.activeConnectionId,
-        })),
+    deleteConnection: (id) => {
+        set((state) => {
+            const connections = state.connections.filter((conn) => conn.id !== id)
+            persistToDisk(connections)
+            return {
+                connections,
+                activeConnectionId:
+                    state.activeConnectionId === id ? null : state.activeConnectionId,
+            }
+        })
+    },
 
     setActiveConnection: (id) => set({ activeConnectionId: id }),
 
@@ -255,3 +293,6 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
         }
     },
 }))
+
+// Auto-load connections when the store is first used
+useConnectionStore.getState().loadSavedConnections()

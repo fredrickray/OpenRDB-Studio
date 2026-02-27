@@ -22,6 +22,8 @@ pub fn run() {
             ipc::command::update_row,
             ipc::command::insert_row,
             ipc::command::delete_rows,
+            ipc::command::save_connections,
+            ipc::command::load_connections,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
