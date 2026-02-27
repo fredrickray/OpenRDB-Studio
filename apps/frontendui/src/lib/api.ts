@@ -245,6 +245,27 @@ export const api = {
      */
     async loadConnections(): Promise<string> {
         return callTauri<string>('load_connections')
+    },
+
+    /**
+     * Save a password to the OS keychain
+     */
+    async savePassword(connectionId: string, password: string): Promise<boolean> {
+        return callTauri<boolean>('save_password', { connectionId, password })
+    },
+
+    /**
+     * Get a password from the OS keychain
+     */
+    async getPassword(connectionId: string): Promise<string | null> {
+        return callTauri<string | null>('get_password', { connectionId })
+    },
+
+    /**
+     * Delete a password from the OS keychain
+     */
+    async deletePassword(connectionId: string): Promise<boolean> {
+        return callTauri<boolean>('delete_password', { connectionId })
     }
 }
 
