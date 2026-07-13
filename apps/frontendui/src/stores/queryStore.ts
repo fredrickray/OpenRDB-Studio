@@ -24,6 +24,9 @@ interface QueryStore {
     results: Record<string, QueryResult>
     isExecuting: boolean
     executingTabId: string | null
+    autoLimit: boolean
+    /** Bumped on cancel so in-flight results are ignored */
+    executeGeneration: number
 
     // Tab Actions
     addTab: () => void
@@ -33,6 +36,7 @@ interface QueryStore {
     renameTab: (id: string, name: string) => void
 
     // Query Actions
+    setAutoLimit: (enabled: boolean) => void
     executeQuery: (tabId: string) => Promise<void>
     cancelQuery: () => void
     clearResults: (tabId: string) => void
@@ -48,12 +52,25 @@ LIMIT 10;`,
     isModified: false,
 }
 
+/** Append LIMIT 1000 when auto-limit is on and the SQL has no LIMIT already. */
+function applyAutoLimit(sql: string, autoLimit: boolean): string {
+    if (!autoLimit) return sql
+    const withoutComments = sql
+        .replace(/--.*$/gm, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .trim()
+    if (/\blimit\b/i.test(withoutComments)) return sql
+    return `${sql.trimEnd()}\nLIMIT 1000`
+}
+
 export const useQueryStore = create<QueryStore>((set, get) => ({
     tabs: [defaultTab],
     activeTabId: 'default',
     results: {},
     isExecuting: false,
     executingTabId: null,
+    autoLimit: true,
+    executeGeneration: 0,
 
     addTab: () => {
         const id = crypto.randomUUID()
@@ -101,6 +118,8 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
             ),
         })),
 
+    setAutoLimit: (enabled) => set({ autoLimit: enabled }),
+
     executeQuery: async (tabId) => {
         // Get the connection ID from tableStore
         const connectionId = useTableStore.getState().activeConnectionId
@@ -124,14 +143,21 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
             return
         }
 
-        set({ isExecuting: true, executingTabId: tabId })
+        const generation = get().executeGeneration + 1
+        set({ isExecuting: true, executingTabId: tabId, executeGeneration: generation })
         const startTime = performance.now()
+        const sqlToRun = applyAutoLimit(tab.sql, get().autoLimit)
 
         try {
-            const apiResult = await api.executeQuery(connectionId, tab.sql)
+            const apiResult = await api.executeQuery(connectionId, sqlToRun)
+
+            // Cancelled while in flight — ignore result
+            if (get().executeGeneration !== generation) {
+                return
+            }
+
             const executionTime = Math.round(performance.now() - startTime)
 
-            // Convert null values to display properly
             const rows = apiResult.rows.map(row =>
                 row.map(cell => cell ?? null)
             )
@@ -148,8 +174,15 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
                 isExecuting: false,
                 executingTabId: null,
                 results: { ...state.results, [tabId]: result },
+                tabs: state.tabs.map((t) =>
+                    t.id === tabId ? { ...t, isModified: false } : t
+                ),
             }))
         } catch (error) {
+            if (get().executeGeneration !== generation) {
+                return
+            }
+
             const executionTime = Math.round(performance.now() - startTime)
             const errorResult: QueryResult = {
                 columns: [],
@@ -169,7 +202,13 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
     },
 
     cancelQuery: () => {
-        set({ isExecuting: false, executingTabId: null })
+        // Bump generation so any in-flight result is ignored.
+        // Server-side abort is not available yet; this stops waiting in the UI.
+        set((state) => ({
+            isExecuting: false,
+            executingTabId: null,
+            executeGeneration: state.executeGeneration + 1,
+        }))
     },
 
     clearResults: (tabId) =>
