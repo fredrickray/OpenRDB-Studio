@@ -39,6 +39,16 @@ export interface DatabaseInfo {
     owner: string | null
 }
 
+export interface ForeignKeyInfo {
+    constraint_name: string
+    from_schema: string
+    from_table: string
+    from_column: string
+    to_schema: string
+    to_table: string
+    to_column: string
+}
+
 export interface ColumnInfo {
     name: string | null
     data_type: string | null
@@ -268,6 +278,13 @@ export const api = {
      */
     async deletePassword(connectionId: string): Promise<boolean> {
         return callTauri<boolean>('delete_password', { connectionId })
-    }
+    },
+
+    /**
+     * List foreign key relationships for the connected database
+     */
+    async listForeignKeys(connectionId: string): Promise<ForeignKeyInfo[]> {
+        return callTauri<ForeignKeyInfo[]>('list_foreign_keys', { connectionId })
+    },
 }
 

@@ -76,3 +76,15 @@ pub struct DatabaseInfo {
     pub size: Option<String>,
     pub owner: Option<String>,
 }
+
+/// Foreign key relationship between tables
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForeignKeyInfo {
+    pub constraint_name: String,
+    pub from_schema: String,
+    pub from_table: String,
+    pub from_column: String,
+    pub to_schema: String,
+    pub to_table: String,
+    pub to_column: String,
+}

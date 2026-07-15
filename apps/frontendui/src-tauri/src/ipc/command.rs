@@ -2,7 +2,7 @@ use tauri::{command, State, AppHandle, Manager};
 use crate::state::AppState;
 use crate::adapters::postgres::{
     ConnectionConfig, ConnectionTestResult, ConnectionInfo, 
-    TableInfo, QueryResult, DatabaseInfo, ColumnInfo, create_pool, 
+    TableInfo, QueryResult, DatabaseInfo, ColumnInfo, ForeignKeyInfo, create_pool, 
     list_tables as db_list_tables, execute_query as db_execute_query
 };
 use sqlx::Row;
@@ -641,4 +641,54 @@ pub async fn delete_password(
         Err(keyring::Error::NoEntry) => Ok(true), // Already gone, that's fine
         Err(e) => Err(format!("Failed to delete password from keychain: {}", e)),
     }
+}
+
+/// List foreign key relationships for the connected database
+#[command]
+pub async fn list_foreign_keys(
+    connection_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ForeignKeyInfo>, String> {
+    let pool = state
+        .get_connection(&connection_id)
+        .ok_or("Connection not found")?;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            tc.constraint_name,
+            kcu.table_schema AS from_schema,
+            kcu.table_name AS from_table,
+            kcu.column_name AS from_column,
+            ccu.table_schema AS to_schema,
+            ccu.table_name AS to_table,
+            ccu.column_name AS to_column
+        FROM information_schema.table_constraints AS tc
+        JOIN information_schema.key_column_usage AS kcu
+            ON tc.constraint_name = kcu.constraint_name
+            AND tc.table_schema = kcu.table_schema
+        JOIN information_schema.constraint_column_usage AS ccu
+            ON ccu.constraint_name = tc.constraint_name
+            AND ccu.table_schema = tc.table_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+            AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+        ORDER BY from_schema, from_table, from_column
+        "#
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| format!("Failed to list foreign keys: {}", e))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| ForeignKeyInfo {
+            constraint_name: row.try_get("constraint_name").unwrap_or_default(),
+            from_schema: row.try_get("from_schema").unwrap_or_default(),
+            from_table: row.try_get("from_table").unwrap_or_default(),
+            from_column: row.try_get("from_column").unwrap_or_default(),
+            to_schema: row.try_get("to_schema").unwrap_or_default(),
+            to_table: row.try_get("to_table").unwrap_or_default(),
+            to_column: row.try_get("to_column").unwrap_or_default(),
+        })
+        .collect())
 }
