@@ -11,4 +11,10 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Dedicated port so Tauri does not pick up another Vite app on 5173
+  server: {
+    port: 1420,
+    strictPort: true,
+  },
+  clearScreen: false,
 })

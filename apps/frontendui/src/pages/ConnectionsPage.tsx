@@ -2,7 +2,7 @@ import { ConnectionSidebar } from "@/components/connections/ConnectionSidebar"
 import { ConnectionModal } from "@/components/connections/ConnectionModal"
 import { ConnectionEditForm } from "@/components/connections/ConnectionEditForm"
 import { useConnectionStore } from "@/stores/connectionStore"
-import { Database, Settings, Bell } from "lucide-react"
+import { Database } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export function ConnectionsPage() {
@@ -13,32 +13,17 @@ export function ConnectionsPage() {
         <div className="flex h-screen bg-background">
             <ConnectionSidebar />
 
-            {/* Main Content Area */}
             <div className="flex-1 flex flex-col">
-                {/* Top Bar */}
                 <header className="h-14 border-b border-border flex items-center justify-between px-4">
                     <div className="flex items-center gap-2">
                         <Database className="w-4 h-4 text-primary" />
                         <span className="text-sm font-semibold">OpenRDB Studio</span>
                         <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                            v0.1.0-beta
+                            v0.1.0
                         </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" className="w-8 h-8">
-                            <Settings className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="w-8 h-8">
-                            <Bell className="w-4 h-4" />
-                        </Button>
-                        <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-xs font-medium text-primary-foreground">
-                            JD
-                        </div>
                     </div>
                 </header>
 
-                {/* Main Content - Edit Form or Welcome */}
                 {activeConnection ? (
                     <ConnectionEditForm connection={activeConnection} />
                 ) : (
@@ -61,7 +46,6 @@ export function ConnectionsPage() {
                 )}
             </div>
 
-            {/* Modal only for NEW connections */}
             <ConnectionModal />
         </div>
     )
