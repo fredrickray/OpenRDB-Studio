@@ -1,9 +1,31 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
-import { ZoomIn, ZoomOut, Maximize2, Sparkles, Loader2, KeyRound, Link2 } from "lucide-react"
+import {
+    ZoomIn,
+    ZoomOut,
+    Maximize2,
+    Sparkles,
+    Loader2,
+    KeyRound,
+    Link2,
+    GripVertical,
+    X,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTableStore } from "@/stores/tableStore"
 import { api, type ColumnInfo, type ForeignKeyInfo } from "@/lib/api"
+
+const CARD_WIDTH = 240
+const HEADER_HEIGHT = 44
+const ROW_HEIGHT = 28
+const CARD_PAD_Y = 6
+
+interface TableColumn {
+    name: string
+    type: string
+    isPrimaryKey: boolean
+    isForeignKey: boolean
+}
 
 interface TablePosition {
     id: string
@@ -11,89 +33,153 @@ interface TablePosition {
     schema: string
     x: number
     y: number
-    columns: { name: string; type: string; isPrimaryKey: boolean; isForeignKey: boolean }[]
+    columns: TableColumn[]
+}
+
+interface Relationship {
+    id: string
+    from: string
+    fromColumn: string
+    to: string
+    toColumn: string
+    label: string
 }
 
 interface TableCardProps {
     table: TablePosition
     zoom: number
+    pan: { x: number; y: number }
     onMouseDown: (e: React.MouseEvent, id: string) => void
     isDragging: boolean
     isSelected: boolean
+    highlightedColumns: Set<string>
+    compact: boolean
 }
 
-function TableCard({ table, zoom, onMouseDown, isDragging, isSelected }: TableCardProps) {
+function TableCard({
+    table,
+    zoom,
+    pan,
+    onMouseDown,
+    isDragging,
+    isSelected,
+    highlightedColumns,
+    compact,
+}: TableCardProps) {
     return (
         <div
             className={cn(
-                "absolute bg-card border rounded-lg shadow-lg overflow-hidden select-none",
-                // Only apply transitions when NOT dragging for smooth drag performance
-                !isDragging && "transition-shadow transition-colors duration-150",
-                isDragging ? "cursor-grabbing shadow-2xl ring-2 ring-primary" : "cursor-grab hover:shadow-xl",
-                isSelected ? "border-primary ring-2 ring-primary/50" : "border-border"
+                "absolute select-none rounded-lg border overflow-hidden",
+                "bg-[#0f1a1c]/95 backdrop-blur-sm",
+                !isDragging && "transition-[box-shadow,border-color] duration-150 ease-out",
+                isDragging ? "cursor-grabbing shadow-2xl border-emerald-400/80" : "cursor-grab",
+                isSelected
+                    ? "border-emerald-400/70 shadow-[0_0_0_1px_rgba(52,211,153,0.25)]"
+                    : "border-emerald-900/60 hover:border-emerald-700/70"
             )}
             style={{
-                // Use transform for GPU-accelerated positioning
-                transform: `translate(${table.x * zoom}px, ${table.y * zoom}px) scale(${zoom})`,
-                transformOrigin: 'top left',
-                minWidth: 220,
-                zIndex: isDragging ? 100 : isSelected ? 50 : 1,
-                // Disable pointer events on children during drag to prevent lag
-                willChange: isDragging ? 'transform' : 'auto',
+                transform: `translate(${table.x * zoom + pan.x}px, ${table.y * zoom + pan.y}px) scale(${zoom})`,
+                transformOrigin: "top left",
+                width: CARD_WIDTH,
+                zIndex: isDragging ? 100 : isSelected ? 40 : 2,
+                willChange: isDragging ? "transform" : "auto",
             }}
             onMouseDown={(e) => onMouseDown(e, table.id)}
         >
-            {/* Header */}
-            <div className={cn(
-                "flex items-center justify-between px-3 py-2 border-b border-border",
-                isSelected ? "bg-primary/20" : "bg-muted/50"
-            )}>
-                <div className="flex flex-col">
-                    <span className="text-xs text-muted-foreground">{table.schema}</span>
-                    <span className="text-sm font-semibold">{table.name}</span>
+            <div
+                className={cn(
+                    "flex items-center gap-2 px-2.5 border-b border-emerald-900/50",
+                    isSelected ? "bg-emerald-500/15" : "bg-[#132226]"
+                )}
+                style={{ height: HEADER_HEIGHT }}
+            >
+                <GripVertical className="w-3.5 h-3.5 text-emerald-700/80 shrink-0" />
+                <div className="min-w-0 flex-1">
+                    {!compact && (
+                        <div className="text-[10px] text-emerald-700/80 truncate leading-none mb-0.5">
+                            {table.schema}
+                        </div>
+                    )}
+                    <div className="text-[13px] font-semibold text-emerald-50 truncate leading-tight">
+                        {table.name}
+                    </div>
                 </div>
-                <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                        {table.columns.length} cols
-                    </span>
-                </div>
+                <span className="text-[10px] text-emerald-600/90 tabular-nums shrink-0">
+                    {table.columns.length}
+                </span>
             </div>
 
-            {/* Columns */}
-            <div className="py-1 max-h-52 overflow-y-auto">
+            <div style={{ paddingTop: CARD_PAD_Y, paddingBottom: CARD_PAD_Y }}>
                 {table.columns.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-muted-foreground italic">
-                        Loading columns...
-                    </div>
+                    <div className="px-3 py-2 text-xs text-emerald-700/70 italic">Loading…</div>
                 ) : (
-                    table.columns.map((col) => (
-                        <div
-                            key={col.name}
-                            className={cn(
-                                "flex items-center justify-between px-3 py-1.5 text-xs hover:bg-accent/50",
-                                col.isForeignKey && "text-primary"
-                            )}
-                        >
-                            <div className="flex items-center gap-2">
-                                {col.isPrimaryKey && <KeyRound className="w-3.5 h-3.5 text-yellow-400" />}
-                                {col.isForeignKey && <Link2 className="w-3.5 h-3.5 text-blue-400" />}
-                                {!col.isPrimaryKey && !col.isForeignKey && <span className="w-3.5 text-center text-muted-foreground">○</span>}
-                                <span className={cn("font-medium", col.isForeignKey && "text-primary")}>{col.name}</span>
+                    table.columns.map((col) => {
+                        const highlighted = highlightedColumns.has(col.name)
+                        return (
+                            <div
+                                key={col.name}
+                                data-col={col.name}
+                                className={cn(
+                                    "relative flex items-center justify-between gap-2 px-3 text-[11px]",
+                                    highlighted
+                                        ? "text-sky-50"
+                                        : col.isForeignKey
+                                          ? "text-sky-300/90"
+                                          : "text-emerald-100/85"
+                                )}
+                                style={{ height: ROW_HEIGHT }}
+                            >
+                                {highlighted && (
+                                    <span
+                                        aria-hidden
+                                        className="pointer-events-none absolute left-1 right-1 top-[3px] bottom-[3px] rounded-full border-[1.5px] border-dashed border-sky-300/90 bg-sky-400/10"
+                                    />
+                                )}
+                                <div className="relative z-[1] flex items-center gap-1.5 min-w-0">
+                                    {col.isPrimaryKey ? (
+                                        <KeyRound className="w-3 h-3 text-emerald-400 shrink-0" />
+                                    ) : col.isForeignKey ? (
+                                        <Link2 className="w-3 h-3 text-sky-400 shrink-0" />
+                                    ) : (
+                                        <span className="w-3 shrink-0" />
+                                    )}
+                                    <span className="font-medium truncate">{col.name}</span>
+                                </div>
+                                {!compact && (
+                                    <span className="relative z-[1] text-[10px] text-emerald-700/90 truncate max-w-[40%] text-right">
+                                        {col.type}
+                                    </span>
+                                )}
                             </div>
-                            <span className="text-muted-foreground text-[10px] ml-2">{col.type}</span>
-                        </div>
-                    ))
+                        )
+                    })
                 )}
             </div>
         </div>
     )
 }
 
-export function ErdView() {
-    const { tables, selectedTable, selectedSchema, activeConnectionId, columns } = useTableStore()
+function getColumnCenterY(table: TablePosition, columnName: string): number {
+    const idx = table.columns.findIndex((c) => c.name === columnName)
+    const row = idx >= 0 ? idx : 0
+    return table.y + HEADER_HEIGHT + CARD_PAD_Y + row * ROW_HEIGHT + ROW_HEIGHT / 2
+}
 
-    const [zoom, setZoom] = useState(1)
-    const [pan, setPan] = useState({ x: 20, y: 20 })
+function orthogonalPath(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number
+): string {
+    const midX = x1 + (x2 - x1) / 2
+    return `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`
+}
+
+export function ErdView() {
+    const { tables, selectedTable, selectedSchema, activeConnectionId } = useTableStore()
+
+    const [zoom, setZoom] = useState(0.55)
+    const [pan, setPan] = useState({ x: 40, y: 40 })
     const [tablePositions, setTablePositions] = useState<TablePosition[]>([])
     const [draggingId, setDraggingId] = useState<string | null>(null)
     const [dragStart, setDragStart] = useState({ x: 0, y: 0, tableX: 0, tableY: 0, zoom: 1 })
@@ -102,12 +188,14 @@ export function ErdView() {
     const [foreignKeys, setForeignKeys] = useState<ForeignKeyInfo[]>([])
     const [isPanning, setIsPanning] = useState(false)
     const [panStart, setPanStart] = useState({ x: 0, y: 0, panX: 0, panY: 0 })
+    const [selectedRelId, setSelectedRelId] = useState<string | null>(null)
+    const [hoveredRelId, setHoveredRelId] = useState<string | null>(null)
     const canvasRef = useRef<HTMLDivElement>(null)
+    const pointerMovedRef = useRef(false)
 
-    // Create stable table ID
     const getTableId = (schema: string, name: string) => `${schema}.${name}`
+    const compact = zoom < 0.45
 
-    // Load columns + foreign keys when tables change
     useEffect(() => {
         if (!activeConnectionId || tables.length === 0) return
 
@@ -119,13 +207,13 @@ export function ErdView() {
                 const fks = await api.listForeignKeys(activeConnectionId)
                 setForeignKeys(fks)
             } catch (error) {
-                console.error('Failed to load foreign keys:', error)
+                console.error("Failed to load foreign keys:", error)
                 setForeignKeys([])
             }
 
             for (const table of tables) {
                 if (!table.name) continue
-                const schema = table.schema || 'public'
+                const schema = table.schema || "public"
                 try {
                     const cols = await api.listColumns(activeConnectionId, schema, table.name)
                     columnsMap[getTableId(schema, table.name)] = cols
@@ -141,208 +229,253 @@ export function ErdView() {
         loadAllColumns()
     }, [activeConnectionId, tables])
 
-    // Calculate initial positions for tables in a grid layout
     useEffect(() => {
         if (tables.length === 0) {
             setTablePositions([])
             return
         }
 
-        const CARD_WIDTH = 220
-        const CARD_HEIGHT = 180
-        const GAP_X = 60
-        const GAP_Y = 40
-        const COLS = 3
+        const COLS = Math.max(3, Math.ceil(Math.sqrt(tables.length)))
+        const GAP_X = 80
+        const GAP_Y = 56
 
-        const positions: TablePosition[] = tables
-            .filter(table => table.name != null)
-            .map((table, index) => {
-                const col = index % COLS
-                const row = Math.floor(index / COLS)
-                const schema = table.schema || 'public'
-                const tableName = table.name as string
-                const tableId = getTableId(schema, tableName)
-                const cols = tableColumns[tableId] || []
+        setTablePositions((prev) => {
+            const prevById = new Map(prev.map((t) => [t.id, t]))
 
-                return {
-                    id: tableId,
-                    name: tableName,
-                    schema: schema,
-                    x: col * (CARD_WIDTH + GAP_X) + 40,
-                    y: row * (CARD_HEIGHT + GAP_Y) + 40,
-                    columns: cols.map(c => ({
-                        name: c.name || 'unknown',
-                        type: c.data_type || 'unknown',
-                        isPrimaryKey: c.is_primary_key,
-                        isForeignKey: c.is_foreign_key
-                    }))
-                }
-            })
+            return tables
+                .filter((table) => table.name != null)
+                .map((table, index) => {
+                    const schema = table.schema || "public"
+                    const tableName = table.name as string
+                    const tableId = getTableId(schema, tableName)
+                    const cols = tableColumns[tableId] || []
+                    const existing = prevById.get(tableId)
+                    const col = index % COLS
+                    const row = Math.floor(index / COLS)
 
-        setTablePositions(positions)
+                    return {
+                        id: tableId,
+                        name: tableName,
+                        schema,
+                        x: existing?.x ?? col * (CARD_WIDTH + GAP_X) + 48,
+                        y: existing?.y ?? row * (220 + GAP_Y) + 48,
+                        columns: cols.map((c) => ({
+                            name: c.name || "unknown",
+                            type: c.data_type || "unknown",
+                            isPrimaryKey: c.is_primary_key,
+                            isForeignKey: c.is_foreign_key,
+                        })),
+                    }
+                })
+        })
     }, [tables, tableColumns])
 
-    // Auto-scroll to selected table
     useEffect(() => {
         if (!selectedTable || !selectedSchema) return
-
         const tableId = getTableId(selectedSchema, selectedTable)
-        const table = tablePositions.find(t => t.id === tableId)
-
+        const table = tablePositions.find((t) => t.id === tableId)
         if (table && canvasRef.current) {
-            // Center the selected table in view
             const canvasWidth = canvasRef.current.clientWidth
             const canvasHeight = canvasRef.current.clientHeight
-            const newPanX = canvasWidth / 2 - (table.x + 100) * zoom
-            const newPanY = canvasHeight / 2 - (table.y + 90) * zoom
-            setPan({ x: Math.min(20, newPanX), y: Math.min(20, newPanY) })
+            setPan({
+                x: canvasWidth / 2 - (table.x + CARD_WIDTH / 2) * zoom,
+                y: canvasHeight / 2 - (table.y + 80) * zoom,
+            })
         }
-    }, [selectedTable, selectedSchema, tablePositions, zoom])
+    }, [selectedTable, selectedSchema])
 
-    // Compute relationships from real foreign key metadata
-    const relationships = useMemo(() => {
-        return foreignKeys.map((fk) => ({
+    const relationships: Relationship[] = useMemo(() => {
+        return foreignKeys.map((fk, i) => ({
+            id: `${fk.constraint_name}-${i}`,
+            // line drawn from referenced PK table → FK table (semantic direction)
             from: getTableId(fk.to_schema, fk.to_table),
             fromColumn: fk.to_column,
             to: getTableId(fk.from_schema, fk.from_table),
             toColumn: fk.from_column,
+            label: `${fk.from_table}.${fk.from_column} → ${fk.to_table}.${fk.to_column}`,
         }))
     }, [foreignKeys])
 
-    const handleZoomIn = () => setZoom(z => Math.min(z + 0.1, 2))
-    const handleZoomOut = () => setZoom(z => Math.max(z - 0.1, 0.3))
-    const handleFitToScreen = () => {
-        setZoom(0.7)
-        setPan({ x: 20, y: 20 })
-    }
+    const selectedRel = relationships.find((r) => r.id === selectedRelId) ?? null
 
-    const handleMouseDown = useCallback((e: React.MouseEvent, tableId: string) => {
-        e.preventDefault()
-        e.stopPropagation() // Prevent bubbling to canvas (which would trigger panning)
-        const table = tablePositions.find(t => t.id === tableId)
-        if (!table) return
+    const highlightsByTable = useMemo(() => {
+        const map = new Map<string, Set<string>>()
+        if (!selectedRel) return map
+        map.set(selectedRel.from, new Set([selectedRel.fromColumn]))
+        map.set(selectedRel.to, new Set([selectedRel.toColumn]))
+        return map
+    }, [selectedRel])
 
-        setDraggingId(tableId)
-        setDragStart({
-            x: e.clientX,
-            y: e.clientY,
-            tableX: table.x,
-            tableY: table.y,
-            zoom: zoom, // Store zoom at drag start for consistent calculations
-        })
-    }, [tablePositions, zoom])
+    const handleZoomIn = () => setZoom((z) => Math.min(z + 0.1, 2))
+    const handleZoomOut = () => setZoom((z) => Math.max(z - 0.1, 0.1))
 
-    const handleMouseMove = useCallback((e: React.MouseEvent) => {
-        // Handle panning
-        if (isPanning) {
-            const dx = e.clientX - panStart.x
-            const dy = e.clientY - panStart.y
-            setPan({ x: panStart.panX + dx, y: panStart.panY + dy })
-            return
-        }
-
-        // Handle table dragging
-        if (!draggingId) return
-
-        // Calculate screen delta
-        const screenDeltaX = e.clientX - dragStart.x
-        const screenDeltaY = e.clientY - dragStart.y
-
-        // Convert screen delta to canvas coordinates using the zoom level at drag start
-        const canvasDeltaX = screenDeltaX / dragStart.zoom
-        const canvasDeltaY = screenDeltaY / dragStart.zoom
-
-        setTablePositions(prevTables =>
-            prevTables.map(t =>
-                t.id === draggingId
-                    ? { ...t, x: dragStart.tableX + canvasDeltaX, y: dragStart.tableY + canvasDeltaY }
-                    : t
-            )
+    const handleFitToScreen = useCallback(() => {
+        if (!canvasRef.current || tablePositions.length === 0) return
+        const bounds = tablePositions.reduce(
+            (acc, t) => ({
+                minX: Math.min(acc.minX, t.x),
+                minY: Math.min(acc.minY, t.y),
+                maxX: Math.max(acc.maxX, t.x + CARD_WIDTH),
+                maxY: Math.max(
+                    acc.maxY,
+                    t.y + HEADER_HEIGHT + CARD_PAD_Y * 2 + Math.max(t.columns.length, 1) * ROW_HEIGHT
+                ),
+            }),
+            { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
         )
-    }, [draggingId, dragStart, isPanning, panStart])
+        const w = canvasRef.current.clientWidth - 80
+        const h = canvasRef.current.clientHeight - 80
+        const contentW = bounds.maxX - bounds.minX
+        const contentH = bounds.maxY - bounds.minY
+        const nextZoom = Math.max(0.1, Math.min(1.2, Math.min(w / contentW, h / contentH) * 0.9))
+        setZoom(nextZoom)
+        setPan({
+            x: 40 - bounds.minX * nextZoom + (w - contentW * nextZoom) / 2,
+            y: 40 - bounds.minY * nextZoom + (h - contentH * nextZoom) / 2,
+        })
+    }, [tablePositions])
 
-    const handleMouseUp = useCallback(() => {
-        setDraggingId(null)
-        setIsPanning(false)
-    }, [])
-
-    // Handle background click for panning - always pan when clicking on background
-    const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-        // Left click or middle mouse button starts panning when clicking on canvas background
-        if (e.button === 0 || e.button === 1) {
+    const handleMouseDown = useCallback(
+        (e: React.MouseEvent, tableId: string) => {
             e.preventDefault()
-            setIsPanning(true)
-            setPanStart({
+            e.stopPropagation()
+            const table = tablePositions.find((t) => t.id === tableId)
+            if (!table) return
+            // Keep relationship selection while repositioning tables
+            pointerMovedRef.current = false
+            setDraggingId(tableId)
+            setDragStart({
                 x: e.clientX,
                 y: e.clientY,
-                panX: pan.x,
-                panY: pan.y
+                tableX: table.x,
+                tableY: table.y,
+                zoom,
             })
-        }
-    }, [pan])
+        },
+        [tablePositions, zoom]
+    )
 
-    // Handle trackpad/mouse wheel zoom
+    const handleMouseMove = useCallback(
+        (e: React.MouseEvent) => {
+            if (isPanning) {
+                const dx = e.clientX - panStart.x
+                const dy = e.clientY - panStart.y
+                if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                    pointerMovedRef.current = true
+                }
+                setPan({
+                    x: panStart.panX + dx,
+                    y: panStart.panY + dy,
+                })
+                return
+            }
+            if (!draggingId) return
+            const canvasDeltaX = (e.clientX - dragStart.x) / dragStart.zoom
+            const canvasDeltaY = (e.clientY - dragStart.y) / dragStart.zoom
+            if (Math.abs(canvasDeltaX) > 0.5 || Math.abs(canvasDeltaY) > 0.5) {
+                pointerMovedRef.current = true
+            }
+            setTablePositions((prev) =>
+                prev.map((t) =>
+                    t.id === draggingId
+                        ? { ...t, x: dragStart.tableX + canvasDeltaX, y: dragStart.tableY + canvasDeltaY }
+                        : t
+                )
+            )
+        },
+        [draggingId, dragStart, isPanning, panStart]
+    )
+
+    const handleMouseUp = useCallback(() => {
+        // Only clear selection on a true empty-canvas click (no drag/pan movement)
+        if (isPanning && !pointerMovedRef.current) {
+            setSelectedRelId(null)
+        }
+        setDraggingId(null)
+        setIsPanning(false)
+        pointerMovedRef.current = false
+    }, [isPanning])
+
+    const handleCanvasMouseDown = useCallback(
+        (e: React.MouseEvent) => {
+            if (e.button === 0 || e.button === 1) {
+                if ((e.target as HTMLElement).closest("[data-rel-hit]")) return
+                // Do not deselect here — wait for mouseup so pan keeps the selection
+                pointerMovedRef.current = false
+                setIsPanning(true)
+                setPanStart({ x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y })
+            }
+        },
+        [pan]
+    )
+
     const handleWheel = useCallback((e: WheelEvent) => {
         e.preventDefault()
-
-        // Check if it's a pinch gesture (ctrlKey is true for pinch on trackpad)
         if (e.ctrlKey) {
-            // Pinch zoom
             const delta = -e.deltaY * 0.01
-            setZoom(z => Math.min(2, Math.max(0.3, z + delta)))
+            setZoom((z) => Math.min(2, Math.max(0.1, z + delta)))
         } else {
-            // Regular scroll for panning
-            setPan(p => ({
-                x: p.x - e.deltaX,
-                y: p.y - e.deltaY
-            }))
+            setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }))
         }
     }, [])
 
-    // Attach wheel event listener
     useEffect(() => {
         const canvas = canvasRef.current
         if (!canvas) return
-
-        canvas.addEventListener('wheel', handleWheel, { passive: false })
-        return () => canvas.removeEventListener('wheel', handleWheel)
+        canvas.addEventListener("wheel", handleWheel, { passive: false })
+        return () => canvas.removeEventListener("wheel", handleWheel)
     }, [handleWheel])
 
-    // Draw relationship lines
-    const getRelationshipPath = (rel: typeof relationships[0]) => {
-        const fromTable = tablePositions.find(t => t.id === rel.from)
-        const toTable = tablePositions.find(t => t.id === rel.to)
-        if (!fromTable || !toTable) return ''
+    const getRelationshipGeometry = (rel: Relationship) => {
+        const fromTable = tablePositions.find((t) => t.id === rel.from)
+        const toTable = tablePositions.find((t) => t.id === rel.to)
+        if (!fromTable || !toTable) return null
 
-        const fromX = (fromTable.x + 200) * zoom + pan.x
-        const fromY = (fromTable.y + 50) * zoom + pan.y
-        const toX = toTable.x * zoom + pan.x
-        const toY = (toTable.y + 50) * zoom + pan.y
+        const fromYWorld = getColumnCenterY(fromTable, rel.fromColumn)
+        const toYWorld = getColumnCenterY(toTable, rel.toColumn)
 
-        const midX = (fromX + toX) / 2
-        return `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`
+        // Exit right of PK table, enter left of FK table (or flip if needed)
+        let x1 = fromTable.x + CARD_WIDTH
+        let y1 = fromYWorld
+        let x2 = toTable.x
+        let y2 = toYWorld
+
+        if (toTable.x + CARD_WIDTH < fromTable.x) {
+            x1 = fromTable.x
+            x2 = toTable.x + CARD_WIDTH
+        }
+
+        return {
+            x1: x1 * zoom + pan.x,
+            y1: y1 * zoom + pan.y,
+            x2: x2 * zoom + pan.x,
+            y2: y2 * zoom + pan.y,
+        }
     }
 
     const handleAutoLayout = () => {
-        const CARD_WIDTH = 220
-        const CARD_HEIGHT = 180
-        const GAP_X = 60
-        const GAP_Y = 40
-        const COLS = 3
-
-        setTablePositions(prev => prev.map((table, index) => ({
-            ...table,
-            x: (index % COLS) * (CARD_WIDTH + GAP_X) + 40,
-            y: Math.floor(index / COLS) * (CARD_HEIGHT + GAP_Y) + 40,
-        })))
-        setPan({ x: 20, y: 20 })
+        const COLS = Math.max(3, Math.ceil(Math.sqrt(tablePositions.length)))
+        const GAP_X = 80
+        const GAP_Y = 56
+        setTablePositions((prev) =>
+            prev.map((table, index) => ({
+                ...table,
+                x: (index % COLS) * (CARD_WIDTH + GAP_X) + 48,
+                y: Math.floor(index / COLS) * (220 + GAP_Y) + 48,
+            }))
+        )
+        setPan({ x: 40, y: 40 })
+        setZoom(0.55)
     }
 
-    const currentSelectedId = selectedTable && selectedSchema
-        ? getTableId(selectedSchema, selectedTable)
-        : null
+    const currentSelectedId =
+        selectedTable && selectedSchema ? getTableId(selectedSchema, selectedTable) : null
 
-    // Loading state
+    // Dot grid: world-locked, becomes clearer as you zoom in
+    const dotSpacing = 18 * zoom
+    const dotOpacity = Math.min(0.55, 0.12 + zoom * 0.28)
+    const dotSize = Math.max(0.8, Math.min(2.2, 0.7 + zoom * 0.9))
+
     if (!activeConnectionId) {
         return (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -371,155 +504,234 @@ export function ErdView() {
     }
 
     return (
-        <div className="flex flex-col h-full bg-background relative overflow-hidden">
-            {/* Toolbar */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-card border border-border rounded-lg px-2 py-1 shadow-lg">
-                <Button variant="ghost" size="icon" className="w-8 h-8" onClick={handleZoomIn} title="Zoom In">
-                    <ZoomIn className="w-4 h-4" />
-                </Button>
-                <Button variant="ghost" size="icon" className="w-8 h-8" onClick={handleZoomOut} title="Zoom Out">
-                    <ZoomOut className="w-4 h-4" />
-                </Button>
-                <div className="w-px h-6 bg-border mx-1" />
-                <Button variant="ghost" size="icon" className="w-8 h-8" onClick={handleFitToScreen} title="Fit to Screen">
-                    <Maximize2 className="w-4 h-4" />
-                </Button>
-                <div className="w-px h-6 bg-border mx-1" />
-                <Button size="sm" className="h-8 gap-1" onClick={handleAutoLayout}>
-                    <Sparkles className="w-3 h-3" />
-                    Auto-layout
-                </Button>
-            </div>
+        <div className="flex h-full bg-[#0b1416] relative overflow-hidden">
+            <div className="flex-1 flex flex-col relative overflow-hidden min-w-0">
+                {/* Floating top tools */}
+                <div className="absolute top-3 left-3 z-20 flex items-center gap-1 rounded-md border border-emerald-900/50 bg-[#0f1a1c]/90 px-1.5 py-1 shadow-lg backdrop-blur-sm">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-7 h-7 text-emerald-200/80 hover:text-emerald-50 hover:bg-emerald-500/10"
+                        onClick={handleAutoLayout}
+                        title="Auto-layout"
+                    >
+                        <Sparkles className="w-3.5 h-3.5" />
+                    </Button>
+                </div>
 
-            {/* Canvas */}
-            <div
-                ref={canvasRef}
-                className="flex-1 relative overflow-hidden cursor-grab"
-                style={{ cursor: isPanning ? 'grabbing' : draggingId ? 'grabbing' : 'grab' }}
-                onMouseDown={handleCanvasMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-            >
-                {/* Grid background */}
                 <div
-                    className="absolute inset-0 opacity-20"
+                    ref={canvasRef}
+                    className="flex-1 relative overflow-hidden"
                     style={{
-                        backgroundImage: 'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)',
-                        backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
-                        backgroundPosition: `${pan.x}px ${pan.y}px`
+                        cursor: isPanning || draggingId ? "grabbing" : "grab",
                     }}
-                />
-
-                {/* Relationship Lines SVG */}
-                <svg
-                    className="absolute inset-0 w-full h-full pointer-events-none"
-                    style={{ zIndex: 1 }}
+                    onMouseDown={handleCanvasMouseDown}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    onMouseLeave={handleMouseUp}
                 >
-                    {relationships.map((rel, i) => (
-                        <path
-                            key={i}
-                            d={getRelationshipPath(rel)}
-                            fill="none"
-                            stroke="hsl(var(--primary))"
-                            strokeWidth={2}
-                            strokeOpacity={0.6}
-                            markerEnd="url(#arrowhead)"
-                        />
-                    ))}
-                    <defs>
-                        <marker
-                            id="arrowhead"
-                            markerWidth="10"
-                            markerHeight="7"
-                            refX="9"
-                            refY="3.5"
-                            orient="auto"
-                        >
-                            <polygon
-                                points="0 0, 10 3.5, 0 7"
-                                fill="hsl(var(--primary))"
-                                fillOpacity={0.6}
+                    {/* Spaced dot grid — clearer when zoomed in */}
+                    <div
+                        className="absolute inset-0 pointer-events-none"
+                        style={{
+                            backgroundColor: "#0b1416",
+                            backgroundImage: `radial-gradient(circle, rgba(148, 210, 189, ${dotOpacity}) ${dotSize}px, transparent ${dotSize + 0.5}px)`,
+                            backgroundSize: `${dotSpacing}px ${dotSpacing}px`,
+                            backgroundPosition: `${pan.x}px ${pan.y}px`,
+                        }}
+                    />
+
+                    {/* Relationship lines */}
+                    <svg className="absolute inset-0 w-full h-full" style={{ zIndex: 1 }}>
+                        <defs>
+                            <marker
+                                id="erd-arrow"
+                                markerWidth="8"
+                                markerHeight="6"
+                                refX="7"
+                                refY="3"
+                                orient="auto"
+                            >
+                                <polygon points="0 0, 8 3, 0 6" fill="rgba(125, 211, 252, 0.75)" />
+                            </marker>
+                            <marker
+                                id="erd-arrow-active"
+                                markerWidth="8"
+                                markerHeight="6"
+                                refX="7"
+                                refY="3"
+                                orient="auto"
+                            >
+                                <polygon points="0 0, 8 3, 0 6" fill="rgb(56, 189, 248)" />
+                            </marker>
+                        </defs>
+
+                        {relationships.map((rel) => {
+                            const geo = getRelationshipGeometry(rel)
+                            if (!geo) return null
+                            const path = orthogonalPath(geo.x1, geo.y1, geo.x2, geo.y2)
+                            const active = selectedRelId === rel.id
+                            const hovered = hoveredRelId === rel.id
+                            return (
+                                <g key={rel.id}>
+                                    {/* Wide invisible hit target */}
+                                    <path
+                                        data-rel-hit=""
+                                        d={path}
+                                        fill="none"
+                                        stroke="transparent"
+                                        strokeWidth={14}
+                                        className="cursor-pointer"
+                                        onMouseEnter={() => setHoveredRelId(rel.id)}
+                                        onMouseLeave={() => setHoveredRelId(null)}
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            setSelectedRelId(rel.id)
+                                        }}
+                                    />
+                                    <path
+                                        d={path}
+                                        fill="none"
+                                        stroke={
+                                            active
+                                                ? "rgb(56, 189, 248)"
+                                                : hovered
+                                                  ? "rgba(125, 211, 252, 0.85)"
+                                                  : "rgba(94, 134, 148, 0.55)"
+                                        }
+                                        strokeWidth={active ? 2.25 : hovered ? 1.75 : 1.25}
+                                        markerEnd={active ? "url(#erd-arrow-active)" : "url(#erd-arrow)"}
+                                        className="pointer-events-none transition-[stroke,stroke-width] duration-150"
+                                    />
+                                </g>
+                            )
+                        })}
+                    </svg>
+
+                    {/* Tables */}
+                    <div className="relative" style={{ zIndex: 2 }}>
+                        {tablePositions.map((table) => (
+                            <TableCard
+                                key={table.id}
+                                table={table}
+                                zoom={zoom}
+                                pan={pan}
+                                onMouseDown={handleMouseDown}
+                                isDragging={draggingId === table.id}
+                                isSelected={currentSelectedId === table.id}
+                                highlightedColumns={highlightsByTable.get(table.id) ?? new Set()}
+                                compact={compact}
                             />
-                        </marker>
-                    </defs>
-                </svg>
+                        ))}
+                    </div>
+                </div>
 
-                {/* Table Cards */}
-                <div
-                    className="relative"
-                    style={{
-                        transform: `translate(${pan.x}px, ${pan.y}px)`,
-                        zIndex: 2,
-                    }}
-                >
-                    {tablePositions.map((table) => (
-                        <TableCard
-                            key={table.id}
-                            table={table}
-                            zoom={zoom}
-                            onMouseDown={handleMouseDown}
-                            isDragging={draggingId === table.id}
-                            isSelected={currentSelectedId === table.id}
-                        />
-                    ))}
+                {/* Bottom-left zoom chrome */}
+                <div className="absolute bottom-3 left-3 z-20 flex items-center gap-1 rounded-md border border-emerald-900/50 bg-[#0f1a1c]/92 px-1.5 py-1 shadow-lg backdrop-blur-sm">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-7 h-7 text-emerald-200/80 hover:bg-emerald-500/10"
+                        onClick={handleZoomIn}
+                        aria-label="Zoom in"
+                    >
+                        <ZoomIn className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-7 h-7 text-emerald-200/80 hover:bg-emerald-500/10"
+                        onClick={handleZoomOut}
+                        aria-label="Zoom out"
+                    >
+                        <ZoomOut className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-7 h-7 text-emerald-200/80 hover:bg-emerald-500/10"
+                        onClick={handleFitToScreen}
+                        aria-label="Fit to screen"
+                    >
+                        <Maximize2 className="w-3.5 h-3.5" />
+                    </Button>
+                    <span className="px-2 text-[11px] tabular-nums text-emerald-300/80 min-w-[3rem]">
+                        {Math.round(zoom * 100)}%
+                    </span>
+                    <span className="pr-2 text-[11px] text-emerald-700/90 border-l border-emerald-900/60 pl-2">
+                        {tablePositions.length} tables · {relationships.length} links
+                    </span>
+                </div>
+
+                {/* Mini-map */}
+                <div className="absolute bottom-3 right-3 z-20 w-40 h-24 rounded-md border border-emerald-900/50 bg-[#0f1a1c]/90 overflow-hidden shadow-lg backdrop-blur-sm">
+                    <div className="relative w-full h-full bg-[#0b1416]/80">
+                        {tablePositions.map((table) => (
+                            <div
+                                key={table.id}
+                                className={cn(
+                                    "absolute rounded-[2px]",
+                                    table.id === currentSelectedId
+                                        ? "bg-emerald-400"
+                                        : highlightsByTable.has(table.id)
+                                          ? "bg-sky-400"
+                                          : "bg-emerald-700/70"
+                                )}
+                                style={{
+                                    left: `${4 + (table.x / 14)}px`,
+                                    top: `${4 + (table.y / 16)}px`,
+                                    width: 14,
+                                    height: 8,
+                                }}
+                            />
+                        ))}
+                    </div>
                 </div>
             </div>
 
-            {/* Mini-map */}
-            <div className="absolute bottom-20 right-4 w-48 h-28 bg-card border border-border rounded-lg overflow-hidden shadow-lg">
-                <div className="px-2 py-1 text-[10px] text-muted-foreground border-b border-border flex justify-between">
-                    <span>MINI-MAP</span>
-                    {currentSelectedId && (
-                        <span className="text-primary truncate max-w-24">
-                            {selectedTable}
-                        </span>
-                    )}
-                </div>
-                <div className="relative w-full h-20 bg-muted/30">
-                    {tablePositions.map((table) => (
-                        <div
-                            key={table.id}
-                            className={cn(
-                                "absolute rounded transition-all",
-                                table.id === currentSelectedId ? "bg-primary ring-1 ring-primary" : "bg-primary/40"
-                            )}
-                            style={{
-                                left: table.x / 10 + 4,
-                                top: table.y / 12 + 4,
-                                width: 18,
-                                height: 10,
-                            }}
-                        />
-                    ))}
-                </div>
-            </div>
-
-            {/* Status Bar */}
-            <div className="absolute bottom-4 left-4 flex items-center gap-4 text-xs text-muted-foreground">
-                <span>{Math.round(zoom * 100)}%</span>
-                <span>TABLES: {tablePositions.length}</span>
-                <span>RELATIONSHIPS: {relationships.length}</span>
-            </div>
-
-            {/* Selected Table Info */}
-            {currentSelectedId && (
-                <div className="absolute bottom-4 right-56 text-xs text-primary font-medium">
-                    SELECTED: {selectedSchema}.{selectedTable}
-                </div>
+            {/* Relationship inspector */}
+            {selectedRel && (
+                <aside className="w-72 shrink-0 border-l border-emerald-900/50 bg-[#0f1a1c] flex flex-col">
+                    <div className="flex items-start justify-between gap-2 px-4 py-3 border-b border-emerald-900/50">
+                        <div className="min-w-0">
+                            <div className="text-[10px] uppercase tracking-wider text-emerald-700/90 mb-1">
+                                Relationship
+                            </div>
+                            <div className="text-sm font-medium text-emerald-50 break-words leading-snug">
+                                {selectedRel.label}
+                            </div>
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="w-7 h-7 shrink-0 text-emerald-400/70 hover:text-emerald-50"
+                            onClick={() => setSelectedRelId(null)}
+                            aria-label="Close"
+                        >
+                            <X className="w-4 h-4" />
+                        </Button>
+                    </div>
+                    <div className="p-4 space-y-4 text-sm">
+                        <div>
+                            <div className="text-[11px] text-emerald-700/90 mb-1">Referenced table</div>
+                            <div className="rounded-md border border-emerald-900/50 bg-[#0b1416] px-3 py-2 text-emerald-100">
+                                <div className="font-medium">{selectedRel.from}</div>
+                                <div className="text-xs text-sky-300 mt-0.5">{selectedRel.fromColumn}</div>
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-[11px] text-emerald-700/90 mb-1">Foreign key table</div>
+                            <div className="rounded-md border border-emerald-900/50 bg-[#0b1416] px-3 py-2 text-emerald-100">
+                                <div className="font-medium">{selectedRel.to}</div>
+                                <div className="text-xs text-sky-300 mt-0.5">{selectedRel.toColumn}</div>
+                            </div>
+                        </div>
+                        <p className="text-[11px] text-emerald-700/90 leading-relaxed">
+                            Connected fields are marked with a dashed circle on the diagram.
+                        </p>
+                    </div>
+                </aside>
             )}
-
-            {/* Zoom Slider */}
-            <div className="absolute bottom-4 left-36 flex items-center gap-2">
-                <input
-                    type="range"
-                    min="30"
-                    max="200"
-                    value={zoom * 100}
-                    onChange={(e) => setZoom(Number(e.target.value) / 100)}
-                    className="w-24 h-1 appearance-none bg-muted rounded cursor-pointer"
-                />
-            </div>
         </div>
     )
 }
