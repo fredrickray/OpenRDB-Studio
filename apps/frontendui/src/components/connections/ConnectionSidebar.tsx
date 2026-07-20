@@ -2,42 +2,54 @@ import { Search, Plus } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ConnectionListItem } from "./ConnectionListItem"
+import { ConnectionTreeItem } from "./ConnectionTreeItem"
 import { useConnectionStore } from "@/stores/connectionStore"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 
 export function ConnectionSidebar() {
     const { connections, openModal, isLoaded } = useConnectionStore()
     const [searchQuery, setSearchQuery] = useState("")
 
-    const filteredConnections = connections.filter((conn) =>
-        conn.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        conn.host.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    const filtered = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase()
+        if (!q) return connections
+        return connections.filter(
+            (conn) =>
+                conn.name.toLowerCase().includes(q) ||
+                conn.host.toLowerCase().includes(q) ||
+                (conn.databases || []).some((db) => db.name.toLowerCase().includes(q))
+        )
+    }, [connections, searchQuery])
 
     const emptyMessage = !isLoaded
-        ? 'Loading connections…'
+        ? "Loading connections…"
         : searchQuery
-            ? 'No connections match your search'
-            : 'No connections yet'
+          ? "No connections match your search"
+          : "No connections yet"
 
     return (
         <div className="w-72 h-full bg-sidebar border-r border-border flex flex-col">
-            <div className="p-4 border-b border-border">
-                <div className="flex items-center justify-between mb-4">
-                    <h1 className="text-lg font-semibold text-foreground">OpenRDB Studio</h1>
-                    <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                        v0.1.0
-                    </span>
+            <div className="p-3 border-b border-border space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                        Connections ({connections.length})
+                    </h2>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => openModal()}
+                        aria-label="New connection"
+                        title="New connection"
+                    >
+                        <Plus className="w-4 h-4" />
+                    </Button>
                 </div>
-                <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
-                    Connections
-                </h2>
                 <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                     <Input
-                        placeholder="Search connections..."
-                        className="pl-9 bg-input"
+                        placeholder="Search connections"
+                        className="pl-8 h-8 text-sm bg-input"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         aria-label="Search connections"
@@ -47,9 +59,9 @@ export function ConnectionSidebar() {
 
             <ScrollArea className="flex-1">
                 <div className="py-2">
-                    {filteredConnections.length > 0 ? (
-                        filteredConnections.map((connection) => (
-                            <ConnectionListItem key={connection.id} connection={connection} />
+                    {filtered.length > 0 ? (
+                        filtered.map((connection) => (
+                            <ConnectionTreeItem key={connection.id} connection={connection} />
                         ))
                     ) : (
                         <div className="px-4 py-8 text-center text-muted-foreground text-sm">
@@ -59,12 +71,8 @@ export function ConnectionSidebar() {
                 </div>
             </ScrollArea>
 
-            <div className="p-4 border-t border-border">
-                <Button
-                    onClick={() => openModal()}
-                    className="w-full"
-                    variant="default"
-                >
+            <div className="p-3 border-t border-border">
+                <Button onClick={() => openModal()} className="w-full" size="sm">
                     <Plus className="w-4 h-4 mr-2" />
                     New Connection
                 </Button>

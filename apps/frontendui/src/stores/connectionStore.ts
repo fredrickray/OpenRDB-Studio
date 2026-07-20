@@ -2,6 +2,9 @@ import { create } from 'zustand'
 import { api } from '@/lib/api'
 import type { ConnectionConfig, ConnectionInfo, ConnectionTestResult, DatabaseInfo } from '@/lib/api'
 import { useToastStore } from '@/stores/toastStore'
+import { friendlyDbError } from '@/lib/errors'
+
+export type ConnectionColor = 'red' | 'yellow' | 'purple' | 'blue' | 'green' | 'none'
 
 export interface Connection {
     id: string
@@ -10,17 +13,25 @@ export interface Connection {
     port: number
     username: string
     password: string
+    /** Last-used / preferred database (optional; listing uses postgres bootstrap) */
     database: string
     sslRequired: boolean
     readOnly: boolean
-    color: 'red' | 'yellow' | 'purple' | 'blue' | 'green'
+    color: ConnectionColor
+    favorite: boolean
     status: 'connected' | 'disconnected' | 'testing' | 'connecting' | 'error'
-    backendId?: string // ID from backend for active connection
+    backendId?: string
     errorMessage?: string
     serverVersion?: string
+    /** UI: tree expanded */
+    expanded?: boolean
+    /** Cached database list for this server */
+    databases?: DatabaseInfo[]
+    isLoadingDatabases?: boolean
+    /** Currently selected database name under this connection */
+    activeDatabase?: string | null
 }
 
-// Fields to persist to JSON (NO password — that goes in the OS keychain)
 interface SavedConnection {
     id: string
     name: string
@@ -30,7 +41,8 @@ interface SavedConnection {
     database: string
     sslRequired: boolean
     readOnly: boolean
-    color: 'red' | 'yellow' | 'purple' | 'blue' | 'green'
+    color: ConnectionColor
+    favorite?: boolean
 }
 
 interface ConnectionStore {
@@ -38,37 +50,47 @@ interface ConnectionStore {
     activeConnectionId: string | null
     isModalOpen: boolean
     editingConnection: Connection | null
+    isCreateDbModalOpen: boolean
+    createDbConnectionId: string | null
     isLoaded: boolean
 
-    // Actions
-    addConnection: (conn: Omit<Connection, 'id'>) => string
+    addConnection: (conn: Omit<Connection, 'id' | 'status'> & { status?: Connection['status'] }) => string
     updateConnection: (id: string, conn: Partial<Connection>) => void
     deleteConnection: (id: string) => void
     setActiveConnection: (id: string | null) => void
     openModal: (conn?: Connection) => void
     closeModal: () => void
+    openCreateDbModal: (connectionId: string) => void
+    closeCreateDbModal: () => void
     loadSavedConnections: () => Promise<void>
+    toggleExpanded: (id: string) => void
+    setExpanded: (id: string, expanded: boolean) => void
 
-    // Backend integration actions
     testConnection: (id: string) => Promise<ConnectionTestResult>
-    connectToDatabase: (id: string) => Promise<ConnectionInfo | null>
+    /** Connect to a specific database under this server connection */
+    connectToDatabase: (id: string, databaseName?: string) => Promise<ConnectionInfo | null>
     disconnectFromDatabase: (id: string) => Promise<boolean>
+    refreshDatabases: (id: string) => Promise<{ success: boolean; databases: DatabaseInfo[]; message?: string }>
     listDatabases: (id: string) => Promise<{ success: boolean; databases: DatabaseInfo[]; message?: string }>
+    createDatabase: (id: string, name: string) => Promise<{ success: boolean; message?: string }>
 }
 
-// Helper to convert store Connection to API ConnectionConfig
-function toConnectionConfig(conn: Connection): ConnectionConfig {
+function toConnectionConfig(conn: Connection, databaseOverride?: string): ConnectionConfig {
+    const database =
+        (databaseOverride && databaseOverride.trim()) ||
+        conn.database?.trim() ||
+        'postgres'
+
     return {
         host: conn.host,
         port: conn.port,
         username: conn.username,
         password: conn.password,
-        database: conn.database,
+        database,
         ssl_required: conn.sslRequired,
     }
 }
 
-// Helper to convert Connection to saveable format (strip runtime fields AND password)
 function toSavedConnection(conn: Connection): SavedConnection {
     return {
         id: conn.id,
@@ -79,17 +101,16 @@ function toSavedConnection(conn: Connection): SavedConnection {
         database: conn.database,
         sslRequired: conn.sslRequired,
         readOnly: conn.readOnly,
-        color: conn.color,
+        color: conn.color === 'none' ? 'blue' : conn.color,
+        favorite: conn.favorite,
     }
 }
 
-// Persist connections to disk + passwords to keychain
 async function persistToDisk(connections: Connection[]) {
     try {
-        // Save passwords to OS keychain 
         await Promise.all(
-            connections.map(conn =>
-                api.savePassword(conn.id, conn.password).catch(err => {
+            connections.map((conn) =>
+                api.savePassword(conn.id, conn.password).catch((err) => {
                     console.error(`Failed to save password for ${conn.name}:`, err)
                     useToastStore.getState().showToast(
                         `Could not save password for "${conn.name}" to the keychain.`,
@@ -99,7 +120,6 @@ async function persistToDisk(connections: Connection[]) {
             )
         )
 
-        // Save connection configs WITHOUT passwords to JSON file
         const saved = connections.map(toSavedConnection)
         await api.saveConnections(JSON.stringify(saved))
     } catch (error) {
@@ -111,37 +131,49 @@ async function persistToDisk(connections: Connection[]) {
     }
 }
 
+function sortConnections(connections: Connection[]): Connection[] {
+    return [...connections].sort((a, b) => {
+        if (a.favorite !== b.favorite) return a.favorite ? -1 : 1
+        return a.name.localeCompare(b.name)
+    })
+}
+
 export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     connections: [],
     activeConnectionId: null,
     isModalOpen: false,
     editingConnection: null,
+    isCreateDbModalOpen: false,
+    createDbConnectionId: null,
     isLoaded: false,
 
-    // Load saved connections from disk + passwords from keychain
     loadSavedConnections: async () => {
         try {
             const json = await api.loadConnections()
             const saved: SavedConnection[] = JSON.parse(json)
 
-            // Retrieve passwords from keychain for each connection
             const connections: Connection[] = await Promise.all(
                 saved.map(async (s): Promise<Connection> => {
                     let password = ''
                     try {
-                        password = await api.getPassword(s.id) || ''
+                        password = (await api.getPassword(s.id)) || ''
                     } catch (err) {
                         console.error(`Failed to load password for ${s.name}:`, err)
                     }
                     return {
                         ...s,
+                        color: s.color || 'blue',
+                        favorite: s.favorite ?? false,
                         password,
                         status: 'disconnected',
+                        expanded: false,
+                        databases: [],
+                        activeDatabase: s.database || null,
                     }
                 })
             )
 
-            set({ connections, isLoaded: true })
+            set({ connections: sortConnections(connections), isLoaded: true })
         } catch (error) {
             console.error('Failed to load connections:', error)
             set({ connections: [], isLoaded: true })
@@ -150,9 +182,18 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
 
     addConnection: (conn) => {
         const id = crypto.randomUUID()
-        const newConn = { ...conn, id }
+        const newConn: Connection = {
+            ...conn,
+            id,
+            status: conn.status || 'disconnected',
+            favorite: conn.favorite ?? false,
+            color: conn.color || 'blue',
+            expanded: false,
+            databases: [],
+            activeDatabase: conn.database || null,
+        }
         set((state) => {
-            const connections = [...state.connections, newConn]
+            const connections = sortConnections([...state.connections, newConn])
             persistToDisk(connections)
             return { connections }
         })
@@ -161,15 +202,22 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
 
     updateConnection: (id, updates) => {
         set((state) => {
-            const connections = state.connections.map((conn) =>
-                conn.id === id ? { ...conn, ...updates } : conn
+            const connections = sortConnections(
+                state.connections.map((conn) =>
+                    conn.id === id ? { ...conn, ...updates } : conn
+                )
             )
-            // Only persist if non-runtime fields changed
-            const hasConfigChange = updates.name !== undefined || updates.host !== undefined ||
-                updates.port !== undefined || updates.username !== undefined ||
-                updates.password !== undefined || updates.database !== undefined ||
-                updates.sslRequired !== undefined || updates.readOnly !== undefined ||
-                updates.color !== undefined
+            const hasConfigChange =
+                updates.name !== undefined ||
+                updates.host !== undefined ||
+                updates.port !== undefined ||
+                updates.username !== undefined ||
+                updates.password !== undefined ||
+                updates.database !== undefined ||
+                updates.sslRequired !== undefined ||
+                updates.readOnly !== undefined ||
+                updates.color !== undefined ||
+                updates.favorite !== undefined
             if (hasConfigChange) {
                 persistToDisk(connections)
             }
@@ -178,8 +226,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     },
 
     deleteConnection: (id) => {
-        // Delete password from keychain
-        api.deletePassword(id).catch(err =>
+        api.deletePassword(id).catch((err) =>
             console.error('Failed to delete password from keychain:', err)
         )
 
@@ -208,14 +255,42 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
             editingConnection: null,
         }),
 
-    // Test connection without connecting
+    openCreateDbModal: (connectionId) =>
+        set({
+            isCreateDbModalOpen: true,
+            createDbConnectionId: connectionId,
+        }),
+
+    closeCreateDbModal: () =>
+        set({
+            isCreateDbModalOpen: false,
+            createDbConnectionId: null,
+        }),
+
+    toggleExpanded: (id) => {
+        const conn = get().connections.find((c) => c.id === id)
+        if (!conn) return
+        const next = !conn.expanded
+        get().setExpanded(id, next)
+        if (next) {
+            void get().refreshDatabases(id)
+        }
+    },
+
+    setExpanded: (id, expanded) => {
+        set((state) => ({
+            connections: state.connections.map((c) =>
+                c.id === id ? { ...c, expanded } : c
+            ),
+        }))
+    },
+
     testConnection: async (id) => {
         const connection = get().connections.find((c) => c.id === id)
         if (!connection) {
             return { success: false, message: 'Connection not found', server_version: null }
         }
 
-        // Set status to testing
         set((state) => ({
             connections: state.connections.map((c) =>
                 c.id === id ? { ...c, status: 'testing' as const, errorMessage: undefined } : c
@@ -223,18 +298,22 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
         }))
 
         try {
+            // Test against last-used DB or postgres
             const result = await api.testConnection(toConnectionConfig(connection))
 
-            // Update status based on result
             set((state) => ({
                 connections: state.connections.map((c) =>
                     c.id === id
                         ? {
-                            ...c,
-                            status: result.success ? 'disconnected' : 'error',
-                            errorMessage: result.success ? undefined : result.message,
-                            serverVersion: result.server_version || undefined,
-                        }
+                              ...c,
+                              status: result.success
+                                  ? c.backendId
+                                      ? 'connected'
+                                      : 'disconnected'
+                                  : 'error',
+                              errorMessage: result.success ? undefined : result.message,
+                              serverVersion: result.server_version || undefined,
+                          }
                         : c
                 ),
             }))
@@ -251,44 +330,75 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
         }
     },
 
-    // Connect to database
-    connectToDatabase: async (id) => {
+    connectToDatabase: async (id, databaseName) => {
         const connection = get().connections.find((c) => c.id === id)
         if (!connection) return null
 
-        // Set status to connecting
+        const targetDb = databaseName?.trim() || connection.database?.trim() || 'postgres'
+
+        // Disconnect previous pool if switching DB on same connection
+        if (connection.backendId) {
+            try {
+                await api.disconnect(connection.backendId)
+            } catch {
+                // ignore
+            }
+        }
+
         set((state) => ({
             connections: state.connections.map((c) =>
-                c.id === id ? { ...c, status: 'connecting' as const, errorMessage: undefined } : c
+                c.id === id
+                    ? {
+                          ...c,
+                          status: 'connecting' as const,
+                          errorMessage: undefined,
+                          backendId: undefined,
+                      }
+                    : c
             ),
         }))
 
         try {
-            const info = await api.connect(toConnectionConfig(connection))
+            const info = await api.connect(toConnectionConfig(connection, targetDb))
 
-            // Update with connected status and backend ID
-            set((state) => ({
-                connections: state.connections.map((c) =>
-                    c.id === id
-                        ? { ...c, status: 'connected' as const, backendId: info.id, errorMessage: undefined }
-                        : c
-                ),
-                activeConnectionId: id,
-            }))
+            set((state) => {
+                const connections = sortConnections(
+                    state.connections.map((c) =>
+                        c.id === id
+                            ? {
+                                  ...c,
+                                  status: 'connected' as const,
+                                  backendId: info.id,
+                                  database: targetDb,
+                                  activeDatabase: targetDb,
+                                  errorMessage: undefined,
+                                  expanded: true,
+                              }
+                            : c
+                    )
+                )
+                persistToDisk(connections)
+                return {
+                    connections,
+                    activeConnectionId: id,
+                }
+            })
 
             return info
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error)
+            const message = friendlyDbError(
+                error instanceof Error ? error.message : String(error)
+            )
             set((state) => ({
                 connections: state.connections.map((c) =>
                     c.id === id ? { ...c, status: 'error' as const, errorMessage: message } : c
                 ),
             }))
+            useToastStore.getState().showToast(message, 'error')
             return null
         }
     },
 
-    // Disconnect from database
     disconnectFromDatabase: async (id) => {
         const connection = get().connections.find((c) => c.id === id)
         if (!connection || !connection.backendId) return false
@@ -299,33 +409,81 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
             set((state) => ({
                 connections: state.connections.map((c) =>
                     c.id === id
-                        ? { ...c, status: 'disconnected' as const, backendId: undefined, errorMessage: undefined }
+                        ? {
+                              ...c,
+                              status: 'disconnected' as const,
+                              backendId: undefined,
+                              activeDatabase: null,
+                              errorMessage: undefined,
+                          }
                         : c
                 ),
             }))
 
             return true
-        } catch (error) {
+        } catch {
             return false
         }
     },
 
-    // List available databases
-    listDatabases: async (id) => {
+    refreshDatabases: async (id) => {
         const connection = get().connections.find((c) => c.id === id)
         if (!connection) {
             return { success: false, databases: [], message: 'Connection not found' }
         }
 
+        set((state) => ({
+            connections: state.connections.map((c) =>
+                c.id === id ? { ...c, isLoadingDatabases: true } : c
+            ),
+        }))
+
         try {
-            const databases = await api.listDatabases(toConnectionConfig(connection))
+            const databases = await api.listDatabases(toConnectionConfig(connection, 'postgres'))
+            set((state) => ({
+                connections: state.connections.map((c) =>
+                    c.id === id
+                        ? { ...c, databases, isLoadingDatabases: false, errorMessage: undefined }
+                        : c
+                ),
+            }))
             return { success: true, databases }
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error)
+            const message = friendlyDbError(
+                error instanceof Error ? error.message : String(error)
+            )
+            set((state) => ({
+                connections: state.connections.map((c) =>
+                    c.id === id
+                        ? { ...c, isLoadingDatabases: false, errorMessage: message }
+                        : c
+                ),
+            }))
             return { success: false, databases: [], message }
+        }
+    },
+
+    listDatabases: async (id) => get().refreshDatabases(id),
+
+    createDatabase: async (id, name) => {
+        const connection = get().connections.find((c) => c.id === id)
+        if (!connection) {
+            return { success: false, message: 'Connection not found' }
+        }
+
+        try {
+            await api.createDatabase(toConnectionConfig(connection, 'postgres'), name.trim())
+            await get().refreshDatabases(id)
+            useToastStore.getState().showToast(`Database “${name.trim()}” created`, 'success')
+            return { success: true }
+        } catch (error) {
+            const message = friendlyDbError(
+                error instanceof Error ? error.message : String(error)
+            )
+            useToastStore.getState().showToast(message, 'error')
+            return { success: false, message }
         }
     },
 }))
 
-// Auto-load connections when the store is first used
 useConnectionStore.getState().loadSavedConnections()
