@@ -1,6 +1,6 @@
 # OpenRDB Atlas
 
-Marketing site for [OpenRDB Studio](../frontendui/) — the desktop PostgreSQL client.
+Marketing site for [OpenRDB Studio](../frontendui/), the desktop PostgreSQL client.
 
 ## Run locally
 
@@ -19,7 +19,7 @@ npm run build
 npm run preview
 ```
 
-Static output goes to `dist/` — deploy to GitHub Pages, Vercel, Netlify, or any static host.
+Static output goes to `dist/`. Deploy to GitHub Pages, Vercel, Netlify, or any static host.
 
 ## Links
 
