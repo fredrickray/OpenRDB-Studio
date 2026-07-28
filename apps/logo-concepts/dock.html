@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenRDB — Dock-Style Logo Concepts</title>
+    <style>
+      :root {
+        --bg: #1a1a1a;
+        --surface: #2a2a2a;
+        --border: #3a3a3c;
+        --text: #f5f5f7;
+        --muted: #98989d;
+        --dock-bg: rgba(255, 255, 255, 0.12);
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        padding: 2rem 2rem 4rem;
+      }
+
+      header { margin-bottom: 2rem; }
+      h1 { margin: 0 0 0.5rem; font-size: 1.875rem; font-weight: 700; letter-spacing: -0.02em; }
+      .subtitle { color: var(--muted); max-width: 680px; line-height: 1.6; margin: 0 0 1rem; }
+
+      nav {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 2rem;
+      }
+
+      nav a {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 0.875rem;
+        padding: 0.4rem 0.85rem;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        transition: all 0.15s;
+      }
+
+      nav a:hover, nav a.active {
+        color: var(--text);
+        border-color: #2563eb;
+        background: rgba(37, 99, 235, 0.12);
+      }
+
+      .dock-preview {
+        background: var(--dock-bg);
+        backdrop-filter: blur(20px);
+        border-radius: 18px;
+        padding: 1rem 1.5rem;
+        margin-bottom: 2.5rem;
+        display: flex;
+        gap: 0.65rem;
+        flex-wrap: wrap;
+        align-items: end;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        max-width: 900px;
+      }
+
+      .dock-preview .mini {
+        width: 52px;
+        height: 52px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      }
+
+      .section-title {
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 2rem 0 1rem;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 1rem;
+      }
+
+      .concept {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 1.25rem 1rem 1rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.65rem;
+        cursor: default;
+        transition: border-color 0.2s, transform 0.15s;
+      }
+
+      .concept:hover {
+        border-color: #2563eb;
+        transform: scale(1.02);
+      }
+
+      .concept.recommended {
+        border-color: rgba(37, 99, 235, 0.5);
+        box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.2);
+      }
+
+      .squircle {
+        width: 88px;
+        height: 88px;
+        border-radius: 20px;
+        display: grid;
+        place-items: center;
+        box-shadow:
+          0 1px 0 rgba(255, 255, 255, 0.15) inset,
+          0 8px 24px rgba(0, 0, 0, 0.45);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .squircle::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(145deg, rgba(255,255,255,0.18) 0%, transparent 45%);
+        pointer-events: none;
+      }
+
+      .squircle svg {
+        width: 52px;
+        height: 52px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .grad-blue { background: linear-gradient(145deg, #3b82f6 0%, #1d4ed8 100%); }
+      .grad-navy { background: linear-gradient(145deg, #2563eb 0%, #1e3a8a 100%); }
+      .grad-indigo { background: linear-gradient(145deg, #6366f1 0%, #4338ca 100%); }
+      .grad-teal { background: linear-gradient(145deg, #0ea5e9 0%, #0369a1 100%); }
+      .grad-slate { background: linear-gradient(145deg, #475569 0%, #1e293b 100%); }
+      .grad-violet { background: linear-gradient(145deg, #8b5cf6 0%, #5b21b6 100%); }
+
+      .label {
+        font-size: 0.78rem;
+        font-weight: 600;
+        text-align: center;
+      }
+
+      .desc {
+        font-size: 0.68rem;
+        color: var(--muted);
+        text-align: center;
+        line-height: 1.35;
+      }
+
+      .badge {
+        font-size: 0.6rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #60a5fa;
+        background: rgba(37, 99, 235, 0.15);
+        padding: 0.15rem 0.45rem;
+        border-radius: 4px;
+      }
+
+      .note {
+        margin-top: 2.5rem;
+        padding: 1rem 1.25rem;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(37, 99, 235, 0.06);
+        color: var(--muted);
+        font-size: 0.85rem;
+        line-height: 1.6;
+        max-width: 720px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Dock-Style Logo Concepts</h1>
+      <p class="subtitle">
+        20 macOS squircle icons styled like Compass, TablePlus, and Raycast. White glyphs on
+        blue gradients — built for your dock. Pick a number or combine ideas.
+      </p>
+      <nav>
+        <a href="index.html">Original 15 concepts</a>
+        <a href="dock.html" class="active">Dock style (this page)</a>
+      </nav>
+    </header>
+
+    <p class="section-title">Live dock preview — hover concepts below to compare scale</p>
+    <div class="dock-preview" id="dock"></div>
+
+    <p class="section-title">Recommended — closest to your current icon direction</p>
+    <div class="grid" id="recommended"></div>
+
+    <p class="section-title">All dock-style concepts</p>
+    <div class="grid" id="grid"></div>
+
+    <div class="note">
+      <strong>How to choose:</strong> Reply with a number (e.g. <code>#18</code>) or a mix
+      (<code>#16 shape + #28 colors</code>). I'll export all Tauri icon sizes + Atlas favicon.<br /><br />
+      Also check the generated sheets in your chat for AI-rendered premium versions.
+    </div>
+
+    <script>
+      const glyphs = {
+        twinArch: `<svg viewBox="0 0 64 64" fill="none"><path d="M18 44c0-14 6-24 14-24s14 10 14 24" stroke="white" stroke-width="4" stroke-linecap="round"/><path d="M46 44c0-14-6-24-14-24S18 30 18 44" stroke="white" stroke-width="4" stroke-linecap="round"/></svg>`,
+        twinArchNode: `<svg viewBox="0 0 64 64" fill="none"><path d="M16 42c0-12 7-20 16-20s16 8 16 20" stroke="white" stroke-width="3.5" stroke-linecap="round"/><path d="M48 42c0-12-7-20-16-20S16 30 16 42" stroke="white" stroke-width="3.5" stroke-linecap="round"/><circle cx="32" cy="38" r="5" fill="white"/></svg>`,
+        bridgeHub: `<svg viewBox="0 0 64 64" fill="none"><path d="M12 40c8-16 32-16 40 0" stroke="white" stroke-width="3.5" stroke-linecap="round"/><circle cx="32" cy="28" r="6" fill="white"/><line x1="32" y1="34" x2="32" y2="44" stroke="white" stroke-width="2.5" stroke-linecap="round"/><line x1="22" y1="44" x2="42" y2="44" stroke="white" stroke-width="2.5" stroke-linecap="round"/></svg>`,
+        tripleLink: `<svg viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="6" fill="white"/><line x1="32" y1="26" x2="32" y2="14" stroke="white" stroke-width="2.5" stroke-linecap="round"/><line x1="27" y1="35" x2="16" y2="42" stroke="white" stroke-width="2.5" stroke-linecap="round"/><line x1="37" y1="35" x2="48" y2="42" stroke="white" stroke-width="2.5" stroke-linecap="round"/><circle cx="32" cy="12" r="3" fill="white"/><circle cx="14" cy="44" r="3" fill="white"/><circle cx="50" cy="44" r="3" fill="white"/></svg>`,
+        cylinderMinimal: `<svg viewBox="0 0 64 64" fill="none"><ellipse cx="32" cy="22" rx="16" ry="6" fill="white"/><path d="M16 22v18c0 3.3 7.2 6 16 6s16-2.7 16-6V22" stroke="white" stroke-width="3" fill="none"/></svg>`,
+        cylinderOrbit: `<svg viewBox="0 0 64 64" fill="none"><ellipse cx="32" cy="24" rx="12" ry="5" fill="white"/><path d="M20 24v14c0 2.8 5.4 5 12 5s12-2.2 12-5V24" stroke="white" stroke-width="2.5" fill="none"/><ellipse cx="32" cy="32" rx="22" ry="8" stroke="white" stroke-width="2" fill="none" transform="rotate(-20 32 32)"/></svg>`,
+        erdClean: `<svg viewBox="0 0 64 64" fill="none"><rect x="10" y="24" width="16" height="12" rx="2" stroke="white" stroke-width="2.5"/><rect x="38" y="14" width="16" height="12" rx="2" stroke="white" stroke-width="2.5"/><rect x="38" y="38" width="16" height="12" rx="2" stroke="white" stroke-width="2.5"/><line x1="26" y1="30" x2="38" y2="20" stroke="white" stroke-width="2"/><line x1="26" y1="32" x2="38" y2="44" stroke="white" stroke-width="2"/></svg>`,
+        compassMinimal: `<svg viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="20" stroke="white" stroke-width="2.5" fill="none" opacity="0.4"/><polygon points="32,14 36,32 32,28 28,32" fill="white"/><polygon points="32,50 28,32 32,36 36,32" fill="white" opacity="0.55"/></svg>`,
+        gridPin: `<svg viewBox="0 0 64 64" fill="none"><line x1="14" y1="20" x2="50" y2="20" stroke="white" stroke-width="1.5" opacity="0.35"/><line x1="14" y1="32" x2="50" y2="32" stroke="white" stroke-width="1.5" opacity="0.35"/><line x1="14" y1="44" x2="50" y2="44" stroke="white" stroke-width="1.5" opacity="0.35"/><line x1="24" y1="14" x2="24" y2="50" stroke="white" stroke-width="1.5" opacity="0.35"/><line x1="40" y1="14" x2="40" y2="50" stroke="white" stroke-width="1.5" opacity="0.35"/><circle cx="36" cy="28" r="8" fill="white"/><path d="M36 36v8" stroke="white" stroke-width="2.5" stroke-linecap="round"/></svg>`,
+        nodeStar: `<svg viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="7" fill="white"/><line x1="32" y1="12" x2="32" y2="22" stroke="white" stroke-width="2.5" stroke-linecap="round"/><line x1="32" y1="42" x2="32" y2="52" stroke="white" stroke-width="2.5" stroke-linecap="round"/><line x1="12" y1="32" x2="22" y2="32" stroke="white" stroke-width="2.5" stroke-linecap="round"/><line x1="42" y1="32" x2="52" y2="32" stroke="white" stroke-width="2.5" stroke-linecap="round"/><line x1="18" y1="18" x2="25" y2="25" stroke="white" stroke-width="2" stroke-linecap="round"/><line x1="39" y1="39" x2="46" y2="46" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>`,
+        layers: `<svg viewBox="0 0 64 64" fill="none"><ellipse cx="32" cy="20" rx="18" ry="5" stroke="white" stroke-width="2.5"/><ellipse cx="32" cy="32" rx="18" ry="5" stroke="white" stroke-width="2.5"/><ellipse cx="32" cy="44" rx="18" ry="5" stroke="white" stroke-width="2.5"/></svg>`,
+        chevronDb: `<svg viewBox="0 0 64 64" fill="none"><polyline points="22,28 30,34 22,40" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><ellipse cx="42" cy="34" rx="10" ry="4" fill="white"/><path d="M32 34h4" stroke="white" stroke-width="2.5" stroke-linecap="round"/></svg>`,
+        lockDb: `<svg viewBox="0 0 64 64" fill="none"><rect x="20" y="30" width="24" height="18" rx="3" stroke="white" stroke-width="2.5"/><path d="M24 30v-4a8 8 0 0116 0v4" stroke="white" stroke-width="2.5" stroke-linecap="round"/><circle cx="32" cy="39" r="2.5" fill="white"/></svg>`,
+        mapFold: `<svg viewBox="0 0 64 64" fill="none"><path d="M14 18l16-6 18 6v32l-18-6-16 6V18z" stroke="white" stroke-width="2.5" fill="none"/><line x1="30" y1="12" x2="30" y2="44" stroke="white" stroke-width="2"/><circle cx="38" cy="26" r="4" fill="white"/></svg>`,
+        prism: `<svg viewBox="0 0 64 64" fill="none"><path d="M32 12L52 44H12L32 12z" stroke="white" stroke-width="2.5" fill="none"/><line x1="32" y1="12" x2="32" y2="44" stroke="white" stroke-width="2" opacity="0.5"/><circle cx="32" cy="30" r="4" fill="white"/></svg>`,
+        circuit: `<svg viewBox="0 0 64 64" fill="none"><rect x="26" y="26" width="12" height="12" rx="2" fill="white"/><line x1="32" y1="14" x2="32" y2="26" stroke="white" stroke-width="2.5"/><line x1="32" y1="38" x2="32" y2="50" stroke="white" stroke-width="2.5"/><line x1="14" y1="32" x2="26" y2="32" stroke="white" stroke-width="2.5"/><line x1="38" y1="32" x2="50" y2="32" stroke="white" stroke-width="2.5"/></svg>`,
+        radialO: `<svg viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="16" stroke="white" stroke-width="3" fill="none"/><line x1="32" y1="16" x2="32" y2="32" stroke="white" stroke-width="2.5" stroke-linecap="round"/><line x1="32" y1="32" x2="44" y2="38" stroke="white" stroke-width="2.5" stroke-linecap="round"/><line x1="32" y1="32" x2="20" y2="38" stroke="white" stroke-width="2.5" stroke-linecap="round"/></svg>`,
+        tableCursor: `<svg viewBox="0 0 64 64" fill="none"><rect x="14" y="18" width="36" height="28" rx="3" stroke="white" stroke-width="2.5"/><line x1="14" y1="28" x2="50" y2="28" stroke="white" stroke-width="1.5" opacity="0.5"/><line x1="14" y1="36" x2="50" y2="36" stroke="white" stroke-width="1.5" opacity="0.5"/><rect x="30" y="29" width="14" height="6" rx="1" fill="white" opacity="0.7"/></svg>`,
+        globeDb: `<svg viewBox="0 0 64 64" fill="none"><circle cx="32" cy="30" r="16" stroke="white" stroke-width="2.5"/><ellipse cx="32" cy="30" rx="7" ry="16" stroke="white" stroke-width="1.5" opacity="0.5"/><line x1="16" y1="30" x2="48" y2="30" stroke="white" stroke-width="1.5" opacity="0.5"/><ellipse cx="32" cy="48" rx="8" ry="3" fill="white"/></svg>`,
+        aperture: `<svg viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="18" stroke="white" stroke-width="2.5" fill="none"/><path d="M32 14l6 18H26L32 14z" fill="white" opacity="0.9"/><path d="M46 38l-18 6 6-18 12 12z" fill="white" opacity="0.6"/><path d="M18 38l12-12 6 18-18-6z" fill="white" opacity="0.75"/></svg>`,
+      };
+
+      const concepts = [
+        { id: 16, name: "Twin Arches", desc: "Your current direction, refined. Connection metaphor.", glyph: "twinArch", grad: "grad-blue", recommended: true },
+        { id: 17, name: "Arches + Node", desc: "Two databases linked through a hub.", glyph: "twinArchNode", grad: "grad-navy", recommended: true },
+        { id: 18, name: "Bridge Hub", desc: "Bridge over data. Strong relational meaning.", glyph: "bridgeHub", grad: "grad-blue", recommended: true },
+        { id: 19, name: "Triple Link", desc: "Server → databases. Compass-style tree.", glyph: "tripleLink", grad: "grad-indigo" },
+        { id: 20, name: "Cylinder Minimal", desc: "TablePlus/Postgres clean. Instant recognition.", glyph: "cylinderMinimal", grad: "grad-blue" },
+        { id: 21, name: "Cylinder Orbit", desc: "Database with connection ring. Atlas vibe.", glyph: "cylinderOrbit", grad: "grad-navy" },
+        { id: 22, name: "ERD Clean", desc: "Three tables, two FK lines. ERD feature.", glyph: "erdClean", grad: "grad-indigo" },
+        { id: 23, name: "Compass", desc: "Navigation mark for Atlas + Studio.", glyph: "compassMinimal", grad: "grad-blue" },
+        { id: 24, name: "Grid + Pin", desc: "Map grid with location. Atlas discovery.", glyph: "gridPin", grad: "grad-teal" },
+        { id: 25, name: "Node Star", desc: "Connection hub. Multi-server management.", glyph: "nodeStar", grad: "grad-violet" },
+        { id: 26, name: "Layer Stack", desc: "Database layers/schemas. Structure view.", glyph: "layers", grad: "grad-slate" },
+        { id: 27, name: "Query Chevron", desc: "Terminal + database. Native desktop dev tool.", glyph: "chevronDb", grad: "grad-navy" },
+        { id: 28, name: "Secure Lock", desc: "Keychain passwords. Trust at a glance.", glyph: "lockDb", grad: "grad-blue" },
+        { id: 29, name: "Folded Map", desc: "Atlas brand literal. Browse your data map.", glyph: "mapFold", grad: "grad-teal", recommended: true },
+        { id: 30, name: "Prism Core", desc: "Structured data crystal. Modern & distinct.", glyph: "prism", grad: "grad-violet" },
+        { id: 31, name: "Circuit Hub", desc: "Relational circuit. Technical precision.", glyph: "circuit", grad: "grad-indigo" },
+        { id: 32, name: "Radial O", desc: "OpenRDB monogram. Spokes = connections.", glyph: "radialO", grad: "grad-blue" },
+        { id: 33, name: "Table + Cell", desc: "Data grid with selection. Browse feature.", glyph: "tableCursor", grad: "grad-navy" },
+        { id: 34, name: "Globe + DB", desc: "World of databases. Atlas + global scale.", glyph: "globeDb", grad: "grad-teal" },
+        { id: 35, name: "Studio Aperture", desc: "Inspect & focus. Studio lens metaphor.", glyph: "aperture", grad: "grad-indigo" },
+      ];
+
+      function renderConcept(c) {
+        const el = document.createElement("article");
+        el.className = "concept" + (c.recommended ? " recommended" : "");
+        el.innerHTML = `
+          <div class="squircle ${c.grad}">${glyphs[c.glyph]}</div>
+          ${c.recommended ? '<span class="badge">Pick</span>' : ""}
+          <div class="label">#${c.id} ${c.name}</div>
+          <div class="desc">${c.desc}</div>
+        `;
+        el.addEventListener("mouseenter", () => {
+          document.getElementById("dock").innerHTML = `
+            <div class="mini squircle ${c.grad}" style="width:52px;height:52px;border-radius:12px">${glyphs[c.glyph].replace('width="52"','width="32"').replace('height="52"','height="32"')}</div>
+          `;
+        });
+        return el;
+      }
+
+      const rec = document.getElementById("recommended");
+      const grid = document.getElementById("grid");
+      for (const c of concepts.filter(x => x.recommended)) rec.appendChild(renderConcept(c));
+      for (const c of concepts) grid.appendChild(renderConcept(c));
+
+      // Default dock preview
+      document.getElementById("dock").innerHTML = concepts.slice(0, 8).map(c =>
+        `<div class="mini squircle ${c.grad}" style="width:52px;height:52px;border-radius:12px;display:grid;place-items:center">${glyphs[c.glyph]}</div>`
+      ).join("");
+    </script>
+  </body>
+</html>
