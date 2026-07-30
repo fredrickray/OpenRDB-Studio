@@ -1,4 +1,5 @@
 import { useNavScroll } from '@/hooks/useReveal'
+import { AppLogo } from '@/components/AppLogo'
 import { GITHUB_REPO_URL } from '@/lib/content'
 import { Github } from 'lucide-react'
 
@@ -18,7 +19,7 @@ export function Nav() {
     >
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
         <a href="#" className="flex items-center gap-2.5 transition-opacity hover:opacity-80">
-          <img src="/icon.png" alt="" className="h-8 w-8 rounded-lg" />
+          <AppLogo size="md" />
           <span className="text-sm font-semibold tracking-tight">
             OpenRDB <span className="text-[var(--color-muted-foreground)]">Atlas</span>
           </span>

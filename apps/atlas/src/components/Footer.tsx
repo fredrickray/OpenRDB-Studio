@@ -1,11 +1,12 @@
 import { GITHUB_REPO_URL } from '@/lib/content'
+import { AppLogo } from '@/components/AppLogo'
 
 export function Footer() {
   return (
     <footer className="border-t border-[var(--color-card-border)] py-10">
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 sm:flex-row">
         <div className="flex items-center gap-2.5">
-          <img src="/icon.png" alt="" className="h-6 w-6 rounded-md opacity-80" />
+          <AppLogo size="sm" className="opacity-80" />
           <span className="text-sm text-[var(--color-muted-foreground)]">
             OpenRDB Atlas, home of{' '}
             <span className="text-[var(--color-foreground)]">OpenRDB Studio</span>
