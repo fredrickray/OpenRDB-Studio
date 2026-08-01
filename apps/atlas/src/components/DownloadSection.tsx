@@ -36,7 +36,7 @@ export function DownloadSection() {
                 {platforms.map((platform, i) => (
                   <Reveal key={platform.id} delay={i as 0 | 1 | 2}>
                     <a
-                      href={GITHUB_RELEASES_URL}
+                      href={platform.downloadUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="group flex flex-col items-center rounded-2xl border border-[var(--color-card-border)] bg-[var(--color-background)] p-6 text-center transition-all duration-300 hover:border-[var(--color-primary)]/40 hover:shadow-[0_0_32px_var(--color-glow)]"

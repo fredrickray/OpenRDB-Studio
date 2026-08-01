@@ -3,6 +3,10 @@ export const GITHUB_RELEASES_URL =
 
 export const GITHUB_REPO_URL = 'https://github.com/fredrickray/OpenRDB-Studio'
 
+/** Stable asset names produced by .github/workflows/release.yml */
+export const RELEASE_DOWNLOAD_BASE =
+  'https://github.com/fredrickray/OpenRDB-Studio/releases/latest/download'
+
 export const features = [
   {
     icon: 'server',
@@ -46,19 +50,22 @@ export const platforms = [
   {
     id: 'macos',
     name: 'macOS',
-    note: 'Apple Silicon & Intel',
+    note: 'Apple Silicon .dmg (Intel build on releases page)',
     icon: 'apple',
+    downloadUrl: `${RELEASE_DOWNLOAD_BASE}/OpenRDB-Studio-macos-aarch64.dmg`,
   },
   {
     id: 'windows',
     name: 'Windows',
-    note: 'Windows 10+',
+    note: 'Windows 10+ installer',
     icon: 'windows',
+    downloadUrl: `${RELEASE_DOWNLOAD_BASE}/OpenRDB-Studio-windows-x64.exe`,
   },
   {
     id: 'linux',
     name: 'Linux',
-    note: 'AppImage & .deb',
+    note: 'AppImage (x64)',
     icon: 'linux',
+    downloadUrl: `${RELEASE_DOWNLOAD_BASE}/OpenRDB-Studio-linux-amd64.AppImage`,
   },
 ] as const
