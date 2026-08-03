@@ -1,0 +1,29 @@
+name: Feature Request
+description: Suggest an idea for OpenRDB Studio
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: Share an idea to make OpenRDB Studio better.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and what's hard about it today?
+      placeholder: I'm often trying to ...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How would you like this to work?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other tools or workflows you've tried?
