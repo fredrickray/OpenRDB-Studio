@@ -77,6 +77,7 @@ body {
 }
 
 /* Cursor pointer for all clickable elements */
+/* Interactive controls */
 button,
 [role="button"],
 [type="button"],
@@ -90,22 +91,11 @@ select,
   cursor: pointer;
 }
 
-/* Ensure interactive elements have pointer cursor */
 input[type="checkbox"],
 input[type="radio"],
 input[type="file"],
 [data-state],
-[data-radix-collection-item] {
-  cursor: pointer;
-}
-
-/* Clickable table rows and list items */
-tr:hover,
-li:hover {
-  cursor: pointer;
-}
-
-/* Tabs and navigation items */
+[data-radix-collection-item],
 [role="tab"],
 [role="menuitem"],
 [role="option"],

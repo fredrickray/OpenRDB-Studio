@@ -1,10 +1,11 @@
 import { useTableStore } from "@/stores/tableStore"
 import { useConnectionStore } from "@/stores/connectionStore"
 import { useToastStore } from "@/stores/toastStore"
+import { friendlyDbError } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ChevronLeft, ChevronRight, RefreshCw, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Plus, Trash2, X, Check, AlertTriangle, Lock } from "lucide-react"
+import { ChevronLeft, ChevronRight, RefreshCw, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Plus, Trash2, X, Check, AlertTriangle, Lock, KeyRound, Link2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { api } from "@/lib/api"
@@ -320,7 +321,7 @@ export function DataTab() {
             showToast('Row inserted', 'success')
         } catch (error) {
             console.error('Failed to insert row:', error)
-            showToast(error instanceof Error ? error.message : 'Failed to insert row', 'error')
+            showToast(friendlyDbError(error instanceof Error ? error.message : 'Failed to insert row'), 'error')
         } finally {
             setIsOperating(false)
         }
@@ -351,7 +352,7 @@ export function DataTab() {
             showToast(`Deleted ${pkValues.length} row(s)`, 'success')
         } catch (error) {
             console.error('Failed to delete rows:', error)
-            showToast(error instanceof Error ? error.message : 'Failed to delete rows', 'error')
+            showToast(friendlyDbError(error instanceof Error ? error.message : 'Failed to delete rows'), 'error')
         } finally {
             setIsOperating(false)
         }
@@ -514,8 +515,8 @@ export function DataTab() {
                                             onClick={() => setSorting(colName)}
                                         >
                                             <div className="flex items-center gap-1.5">
-                                                {colInfo?.is_primary_key && <span className="text-yellow-400">⚿</span>}
-                                                {colInfo?.is_foreign_key && <span className="text-blue-400">↗</span>}
+                                                {colInfo?.is_primary_key && <KeyRound className="w-3.5 h-3.5 text-yellow-400" />}
+                                                {colInfo?.is_foreign_key && <Link2 className="w-3.5 h-3.5 text-blue-400" />}
                                                 <span className={cn(isSorted && "text-primary font-semibold")}>
                                                     {colName.toUpperCase()}
                                                 </span>
@@ -629,7 +630,7 @@ export function DataTab() {
                         {columns.map((col) => (
                             <div key={col.name} className="grid grid-cols-3 items-center gap-4">
                                 <Label className="text-right text-sm">
-                                    {col.is_primary_key && <span className="text-yellow-400 mr-1">⚿</span>}
+                                    {col.is_primary_key && <KeyRound className="w-3.5 h-3.5 text-yellow-400 inline mr-1" />}
                                     {col.name}
                                 </Label>
                                 <Input

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { api, type TableInfo, type ColumnInfo, type TableDataResult } from '@/lib/api'
+import { friendlyDbError } from '@/lib/errors'
 
 export interface TableColumn {
     name: string
@@ -148,7 +149,7 @@ export const useTableStore = create<TableStore>((set, get) => ({
         } catch (error) {
             set({
                 isLoadingTables: false,
-                error: error instanceof Error ? error.message : 'Failed to fetch tables'
+                error: friendlyDbError(error instanceof Error ? error.message : 'Failed to fetch tables')
             })
         }
     },
@@ -181,7 +182,7 @@ export const useTableStore = create<TableStore>((set, get) => ({
         } catch (error) {
             set({
                 isLoadingColumns: false,
-                error: error instanceof Error ? error.message : 'Failed to fetch columns'
+                error: friendlyDbError(error instanceof Error ? error.message : 'Failed to fetch columns')
             })
         }
     },
@@ -206,7 +207,7 @@ export const useTableStore = create<TableStore>((set, get) => ({
         } catch (error) {
             set({
                 isLoadingData: false,
-                error: error instanceof Error ? error.message : 'Failed to fetch table data'
+                error: friendlyDbError(error instanceof Error ? error.message : 'Failed to fetch table data')
             })
         }
     },

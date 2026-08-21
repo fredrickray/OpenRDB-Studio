@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { api } from '@/lib/api'
 import { useTableStore } from '@/stores/tableStore'
+import { friendlyDbError } from '@/lib/errors'
 
 export interface QueryTab {
     id: string
@@ -189,7 +190,7 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
                 rows: [],
                 rowCount: 0,
                 executionTime,
-                error: error instanceof Error ? error.message : String(error),
+                error: error instanceof Error ? friendlyDbError(error.message) : friendlyDbError(String(error)),
                 timestamp: new Date(),
             }
 
