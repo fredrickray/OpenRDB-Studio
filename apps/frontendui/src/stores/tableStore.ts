@@ -66,6 +66,7 @@ interface TableStore {
     setCurrentPage: (page: number) => void
     setRowsPerPage: (rows: number) => void
     setFilter: (filter: string) => void
+    applyFilter: (nextFilter?: string) => void
     setSorting: (column: string) => void
     refreshData: () => Promise<void>
 }
@@ -186,7 +187,7 @@ export const useTableStore = create<TableStore>((set, get) => ({
     },
 
     fetchTableData: async () => {
-        const { activeConnectionId, selectedSchema, selectedTable, currentPage, rowsPerPage, sortColumn, sortDirection } = get()
+        const { activeConnectionId, selectedSchema, selectedTable, currentPage, rowsPerPage, sortColumn, sortDirection, filter } = get()
         if (!activeConnectionId || !selectedSchema || !selectedTable) return
 
         set({ isLoadingData: true, error: null })
@@ -198,7 +199,8 @@ export const useTableStore = create<TableStore>((set, get) => ({
                 currentPage,
                 rowsPerPage,
                 sortColumn || undefined,
-                sortColumn ? sortDirection : undefined
+                sortColumn ? sortDirection : undefined,
+                filter.trim() || undefined
             )
             set({ tableData, isLoadingData: false })
         } catch (error) {
@@ -222,6 +224,14 @@ export const useTableStore = create<TableStore>((set, get) => ({
     },
 
     setFilter: (filter) => set({ filter }),
+
+    applyFilter: (nextFilter) => {
+        set((state) => ({
+            filter: nextFilter !== undefined ? nextFilter : state.filter,
+            currentPage: 1,
+        }))
+        get().fetchTableData()
+    },
 
     setSorting: (column: string) => {
         const { sortColumn, sortDirection } = get()

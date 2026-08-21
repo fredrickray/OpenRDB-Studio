@@ -138,7 +138,8 @@ export const api = {
         page: number,
         limit: number,
         sortColumn?: string,
-        sortDirection?: 'asc' | 'desc'
+        sortDirection?: 'asc' | 'desc',
+        filter?: string
     ): Promise<TableDataResult> {
         return callTauri<TableDataResult>('get_table_data', {
             connectionId,
@@ -147,7 +148,8 @@ export const api = {
             page,
             limit,
             sortColumn: sortColumn || null,
-            sortDirection: sortDirection || null
+            sortDirection: sortDirection || null,
+            filter: filter || null,
         })
     },
 

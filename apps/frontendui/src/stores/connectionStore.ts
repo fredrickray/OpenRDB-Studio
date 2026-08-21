@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { api } from '@/lib/api'
 import type { ConnectionConfig, ConnectionInfo, ConnectionTestResult, DatabaseInfo } from '@/lib/api'
+import { useToastStore } from '@/stores/toastStore'
 
 export interface Connection {
     id: string
@@ -40,7 +41,7 @@ interface ConnectionStore {
     isLoaded: boolean
 
     // Actions
-    addConnection: (conn: Omit<Connection, 'id'>) => void
+    addConnection: (conn: Omit<Connection, 'id'>) => string
     updateConnection: (id: string, conn: Partial<Connection>) => void
     deleteConnection: (id: string) => void
     setActiveConnection: (id: string | null) => void
@@ -88,9 +89,13 @@ async function persistToDisk(connections: Connection[]) {
         // Save passwords to OS keychain 
         await Promise.all(
             connections.map(conn =>
-                api.savePassword(conn.id, conn.password).catch(err =>
+                api.savePassword(conn.id, conn.password).catch(err => {
                     console.error(`Failed to save password for ${conn.name}:`, err)
-                )
+                    useToastStore.getState().showToast(
+                        `Could not save password for "${conn.name}" to the keychain.`,
+                        'error'
+                    )
+                })
             )
         )
 
@@ -99,6 +104,10 @@ async function persistToDisk(connections: Connection[]) {
         await api.saveConnections(JSON.stringify(saved))
     } catch (error) {
         console.error('Failed to save connections:', error)
+        useToastStore.getState().showToast(
+            error instanceof Error ? error.message : 'Failed to save connections',
+            'error'
+        )
     }
 }
 
@@ -140,12 +149,14 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     },
 
     addConnection: (conn) => {
-        const newConn = { ...conn, id: crypto.randomUUID() }
+        const id = crypto.randomUUID()
+        const newConn = { ...conn, id }
         set((state) => {
             const connections = [...state.connections, newConn]
             persistToDisk(connections)
             return { connections }
         })
+        return id
     },
 
     updateConnection: (id, updates) => {

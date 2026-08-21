@@ -3,11 +3,17 @@ import { Button } from "@/components/ui/button"
 import { useQueryStore } from "@/stores/queryStore"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { useState } from "react"
 
 export function QueryToolbar() {
-    const { activeTabId, executeQuery, cancelQuery, isExecuting, executingTabId } = useQueryStore()
-    const [autoLimit, setAutoLimit] = useState(true)
+    const {
+        activeTabId,
+        executeQuery,
+        cancelQuery,
+        isExecuting,
+        executingTabId,
+        autoLimit,
+        setAutoLimit,
+    } = useQueryStore()
 
     const isCurrentTabExecuting = isExecuting && executingTabId === activeTabId
 
@@ -43,6 +49,7 @@ export function QueryToolbar() {
                 variant="destructive"
                 onClick={cancelQuery}
                 disabled={!isCurrentTabExecuting}
+                title="Stop waiting for results (server query may still finish)"
             >
                 <Square className="w-4 h-4" />
                 Cancel
@@ -50,12 +57,12 @@ export function QueryToolbar() {
 
             <div className="w-px h-6 bg-border mx-1" />
 
-            <Button size="sm" variant="outline">
+            <Button size="sm" variant="outline" disabled title="Coming soon">
                 <Wand2 className="w-4 h-4" />
                 Format
             </Button>
 
-            <Button size="sm" variant="outline">
+            <Button size="sm" variant="outline" disabled title="Coming soon">
                 <Save className="w-4 h-4" />
             </Button>
 
@@ -74,7 +81,7 @@ export function QueryToolbar() {
 
             <div className="w-px h-6 bg-border mx-1" />
 
-            <Button size="sm" variant="outline">
+            <Button size="sm" variant="outline" disabled title="Coming soon">
                 <Download className="w-4 h-4" />
                 Export
             </Button>

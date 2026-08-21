@@ -6,7 +6,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Database, Eye, EyeOff, Trash2, CheckCircle, Loader2, Lock, Shield, AlertCircle } from "lucide-react"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
+import { Database, Eye, EyeOff, Trash2, CheckCircle, Loader2, Lock, Shield, AlertCircle, AlertTriangle } from "lucide-react"
+import type { DatabaseInfo } from "@/lib/api"
 
 interface ConnectionEditFormProps {
     connection: Connection
@@ -14,13 +23,25 @@ interface ConnectionEditFormProps {
 
 export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
     const navigate = useNavigate()
-    const { updateConnection, deleteConnection, setActiveConnection, connectToDatabase, testConnection } = useConnectionStore()
+    const {
+        updateConnection,
+        deleteConnection,
+        setActiveConnection,
+        connectToDatabase,
+        testConnection,
+        listDatabases,
+    } = useConnectionStore()
     const setActiveTableConnection = useTableStore((state) => state.setActiveConnection)
     const [showPassword, setShowPassword] = useState(false)
     const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
     const [testMessage, setTestMessage] = useState('')
     const [isConnecting, setIsConnecting] = useState(false)
     const [connectError, setConnectError] = useState('')
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+    const [showDatabaseList, setShowDatabaseList] = useState(false)
+    const [databaseList, setDatabaseList] = useState<DatabaseInfo[]>([])
+    const [isListingDatabases, setIsListingDatabases] = useState(false)
+    const [listError, setListError] = useState<string | null>(null)
 
     const [formData, setFormData] = useState<Omit<Connection, 'id' | 'status'>>({
         name: connection.name,
@@ -49,10 +70,10 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
         setTestStatus('idle')
         setTestMessage('')
         setConnectError('')
+        setShowDeleteConfirm(false)
     }, [connection])
 
     const handleTestConnection = async () => {
-        // Save form data first
         updateConnection(connection.id, formData)
 
         setTestStatus('testing')
@@ -74,7 +95,6 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
     }
 
     const handleConnect = async () => {
-        // Save form data first
         updateConnection(connection.id, formData)
 
         setIsConnecting(true)
@@ -84,12 +104,11 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
             const connectionInfo = await connectToDatabase(connection.id)
 
             if (connectionInfo) {
-                // Set the active connection in the table store for workspace data fetching
                 setActiveTableConnection(connectionInfo.id, formData.database)
-                // Navigate to workspace on successful connection
                 navigate('/workspace')
             } else {
-                setConnectError('Failed to connect to database')
+                const err = useConnectionStore.getState().connections.find((c) => c.id === connection.id)?.errorMessage
+                setConnectError(err || 'Failed to connect to database')
             }
         } catch (error) {
             setConnectError(error instanceof Error ? error.message : 'Connection failed')
@@ -98,15 +117,35 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
         }
     }
 
-    const handleDelete = () => {
+    const handleListDatabases = async () => {
+        updateConnection(connection.id, formData)
+        setIsListingDatabases(true)
+        setListError(null)
+        setShowDatabaseList(true)
+
+        try {
+            const result = await listDatabases(connection.id)
+            if (result.success) {
+                setDatabaseList(result.databases)
+            } else {
+                setListError(result.message || 'Failed to list databases')
+            }
+        } catch (error) {
+            setListError(error instanceof Error ? error.message : 'Failed to list databases')
+        } finally {
+            setIsListingDatabases(false)
+        }
+    }
+
+    const handleConfirmDelete = () => {
         deleteConnection(connection.id)
         setActiveConnection(null)
+        setShowDeleteConfirm(false)
     }
 
     return (
         <div className="flex-1 flex items-center justify-center p-8">
             <div className="w-full max-w-3xl">
-                {/* Header */}
                 <div className="flex items-center gap-4 mb-8">
                     <div className="w-14 h-14 rounded-xl bg-primary/20 flex items-center justify-center">
                         <Database className="w-7 h-7 text-primary" />
@@ -122,9 +161,18 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
                     </span>
                 </div>
 
-                {/* Form */}
                 <div className="space-y-6">
-                    {/* Server Info Section */}
+                    <div className="space-y-2">
+                        <Label htmlFor="name-form" className="text-xs text-muted-foreground">CONNECTION NAME</Label>
+                        <Input
+                            id="name-form"
+                            placeholder="My Database"
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            className="bg-input"
+                        />
+                    </div>
+
                     <div className="space-y-4">
                         <h4 className="text-xs font-medium text-muted-foreground flex items-center gap-2">
                             <span className="w-2 h-2 rounded-full bg-primary" />
@@ -155,7 +203,6 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
                         </div>
                     </div>
 
-                    {/* Authentication Section */}
                     <div className="space-y-4">
                         <h4 className="text-xs font-medium text-muted-foreground flex items-center gap-2">
                             <Lock className="w-3 h-3" />
@@ -187,6 +234,7 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
                                         type="button"
                                         onClick={() => setShowPassword(!showPassword)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                        aria-label={showPassword ? 'Hide password' : 'Show password'}
                                     >
                                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                     </button>
@@ -195,7 +243,6 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
                         </div>
                     </div>
 
-                    {/* Initial Database */}
                     <div className="space-y-2">
                         <Label htmlFor="database" className="text-xs text-muted-foreground">INITIAL DATABASE</Label>
                         <div className="flex gap-3">
@@ -206,13 +253,18 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
                                 onChange={(e) => setFormData({ ...formData, database: e.target.value })}
                                 className="flex-1 bg-input"
                             />
-                            <Button variant="outline" size="sm" className="shrink-0">
-                                Fetch List
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="shrink-0"
+                                onClick={handleListDatabases}
+                                disabled={isListingDatabases}
+                            >
+                                {isListingDatabases ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Fetch List'}
                             </Button>
                         </div>
                     </div>
 
-                    {/* Toggles */}
                     <div className="flex items-center gap-8 py-2">
                         <div className="flex items-center gap-3 bg-muted/50 px-4 py-3 rounded-lg">
                             <Shield className="w-4 h-4 text-primary" />
@@ -240,7 +292,6 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
                         </div>
                     </div>
 
-                    {/* Action Buttons */}
                     <div className="flex items-center gap-3 pt-4">
                         <Button
                             onClick={handleConnect}
@@ -271,12 +322,17 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
                                 'Test Connection'
                             )}
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={handleDelete} className="h-11 w-11">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setShowDeleteConfirm(true)}
+                            className="h-11 w-11"
+                            aria-label="Delete connection"
+                        >
                             <Trash2 className="w-4 h-4 text-destructive" />
                         </Button>
                     </div>
 
-                    {/* Connection Error */}
                     {connectError && (
                         <div className="flex items-center gap-3 text-red-500 text-sm bg-red-500/10 px-4 py-3 rounded-lg">
                             <AlertCircle className="w-5 h-5" />
@@ -284,7 +340,6 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
                         </div>
                     )}
 
-                    {/* Test Status */}
                     {testStatus === 'success' && (
                         <div className="flex items-center gap-3 text-green-500 text-sm bg-green-500/10 px-4 py-3 rounded-lg">
                             <CheckCircle className="w-5 h-5" />
@@ -305,6 +360,65 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
                     )}
                 </div>
             </div>
+
+            <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-destructive">
+                            <AlertTriangle className="w-5 h-5" />
+                            Delete connection?
+                        </DialogTitle>
+                        <DialogDescription>
+                            This removes “{connection.name}” from saved connections. It does not drop any database.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
+                            Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={handleConfirmDelete}>
+                            Delete
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={showDatabaseList} onOpenChange={setShowDatabaseList}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Select Database</DialogTitle>
+                        <DialogDescription>
+                            Select a database to use for this connection.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="max-h-[300px] overflow-y-auto space-y-2">
+                        {isListingDatabases ? (
+                            <div className="flex justify-center p-4"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+                        ) : listError ? (
+                            <div className="text-red-500 p-2 text-sm">{listError}</div>
+                        ) : databaseList.length === 0 ? (
+                            <div className="text-muted-foreground p-2 text-sm">No databases found</div>
+                        ) : (
+                            databaseList.map((db, i) => (
+                                <button
+                                    key={`${db.name}-${i}`}
+                                    className="w-full text-left px-3 py-2 rounded-md hover:bg-accent hover:text-accent-foreground text-sm flex items-center justify-between"
+                                    onClick={() => {
+                                        setFormData({ ...formData, database: db.name })
+                                        setShowDatabaseList(false)
+                                    }}
+                                >
+                                    <span className="font-medium">{db.name}</span>
+                                    <div className="text-xs text-muted-foreground flex gap-2">
+                                        {db.owner && <span>{db.owner}</span>}
+                                        {db.size && <span>{db.size}</span>}
+                                    </div>
+                                </button>
+                            ))
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

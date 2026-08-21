@@ -252,6 +252,7 @@ pub async fn get_table_data(
     limit: i32,
     sort_column: Option<String>,
     sort_direction: Option<String>,
+    filter: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<TableDataResult, String> {
     let pool = state
@@ -260,12 +261,34 @@ pub async fn get_table_data(
     
     let offset = (page - 1) * limit;
     
+    // Optional WHERE clause from the UI filter box (trusted local DB client).
+    // Reject multi-statement / dangerous fragments.
+    let where_clause = if let Some(ref raw) = filter {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            String::new()
+        } else if trimmed.contains(';') || trimmed.contains("--") || trimmed.contains("/*") {
+            return Err("Filter cannot contain comments or multiple statements".to_string());
+        } else {
+            // Allow "col = 1" or a full "WHERE col = 1"
+            let body = if trimmed.to_lowercase().starts_with("where ") {
+                trimmed[6..].trim()
+            } else {
+                trimmed
+            };
+            format!(" WHERE ({})", body)
+        }
+    } else {
+        String::new()
+    };
+    
     // Get total row count
     let count_query = format!(
-        "SELECT COUNT(*) as count FROM \"{}\".\"{}\""
+        "SELECT COUNT(*) as count FROM \"{}\".\"{}\"{}"
 ,
         schema.replace('"', "\"\""),
-        table.replace('"', "\"\"")
+        table.replace('"', "\"\""),
+        where_clause
     );
     let count_row: (i64,) = sqlx::query_as(&count_query)
         .fetch_one(&pool)
@@ -313,10 +336,11 @@ pub async fn get_table_data(
     
     // Get actual data - cast all columns to text to avoid type issues
     let data_query = format!(
-        "SELECT {} FROM \"{}\".\"{}\"{}  LIMIT {} OFFSET {}",
+        "SELECT {} FROM \"{}\".\"{}\"{}{} LIMIT {} OFFSET {}",
         column_casts.join(", "),
         schema.replace('"', "\"\""),
         table.replace('"', "\"\""),
+        where_clause,
         order_by,
         limit,
         offset

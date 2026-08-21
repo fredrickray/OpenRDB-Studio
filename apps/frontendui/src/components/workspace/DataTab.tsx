@@ -1,10 +1,12 @@
 import { useTableStore } from "@/stores/tableStore"
+import { useConnectionStore } from "@/stores/connectionStore"
+import { useToastStore } from "@/stores/toastStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ChevronLeft, ChevronRight, RefreshCw, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Plus, Trash2, X, Check, AlertTriangle } from "lucide-react"
+import { ChevronLeft, ChevronRight, RefreshCw, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Plus, Trash2, X, Check, AlertTriangle, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { api } from "@/lib/api"
 import {
     Dialog,
@@ -23,7 +25,8 @@ function EditableCell({
     column,
     isEditing,
     onStartEdit,
-    onCancelEdit
+    onCancelEdit,
+    readOnly,
 }: {
     value: string | null
     onSave: (newValue: string | null) => Promise<void>
@@ -31,6 +34,7 @@ function EditableCell({
     isEditing: boolean
     onStartEdit: () => void
     onCancelEdit: () => void
+    readOnly: boolean
 }) {
     const [editValue, setEditValue] = useState(value ?? '')
     const [isSaving, setIsSaving] = useState(false)
@@ -135,12 +139,18 @@ function EditableCell({
         )
     }
 
+    const startEdit = readOnly ? undefined : onStartEdit
+
     // Display mode
     if (value === null) {
         return (
             <span
-                className="text-muted-foreground italic cursor-pointer hover:bg-muted/50 px-1 -mx-1 rounded"
-                onDoubleClick={onStartEdit}
+                className={cn(
+                    "text-muted-foreground italic px-1 -mx-1 rounded",
+                    !readOnly && "cursor-pointer hover:bg-muted/50"
+                )}
+                onDoubleClick={startEdit}
+                title={readOnly ? 'Read-only connection' : undefined}
             >
                 NULL
             </span>
@@ -151,10 +161,12 @@ function EditableCell({
         return (
             <span
                 className={cn(
-                    "px-2 py-0.5 rounded text-xs font-medium cursor-pointer",
+                    "px-2 py-0.5 rounded text-xs font-medium",
+                    !readOnly && "cursor-pointer",
                     value === 'true' ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
                 )}
-                onDoubleClick={onStartEdit}
+                onDoubleClick={startEdit}
+                title={readOnly ? 'Read-only connection' : undefined}
             >
                 {value.toUpperCase()}
             </span>
@@ -163,9 +175,12 @@ function EditableCell({
 
     return (
         <span
-            title={value}
-            className="cursor-pointer hover:bg-muted/50 px-1 -mx-1 rounded"
-            onDoubleClick={onStartEdit}
+            title={readOnly ? 'Read-only connection' : value}
+            className={cn(
+                "px-1 -mx-1 rounded",
+                !readOnly && "cursor-pointer hover:bg-muted/50"
+            )}
+            onDoubleClick={startEdit}
         >
             {value}
         </span>
@@ -179,11 +194,12 @@ export function DataTab() {
         currentPage,
         rowsPerPage,
         filter,
-        setFilter,
+        applyFilter,
         setCurrentPage,
         setRowsPerPage,
         refreshData,
         isLoadingData,
+        error,
         selectedTable,
         selectedSchema,
         activeConnectionId,
@@ -192,12 +208,25 @@ export function DataTab() {
         setSorting
     } = useTableStore()
 
+    const connections = useConnectionStore((s) => s.connections)
+    const showToast = useToastStore((s) => s.showToast)
+
+    const isReadOnly = useMemo(() => {
+        const conn = connections.find((c) => c.backendId === activeConnectionId)
+        return conn?.readOnly ?? false
+    }, [connections, activeConnectionId])
+
     const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
     const [editingCell, setEditingCell] = useState<{ rowIdx: number, colIdx: number } | null>(null)
     const [showInsertDialog, setShowInsertDialog] = useState(false)
     const [showDeleteDialog, setShowDeleteDialog] = useState(false)
     const [insertValues, setInsertValues] = useState<Record<string, string>>({})
     const [isOperating, setIsOperating] = useState(false)
+    const [filterDraft, setFilterDraft] = useState(filter)
+
+    useEffect(() => {
+        setFilterDraft(filter)
+    }, [filter, selectedTable, selectedSchema])
 
     const totalRows = tableData?.total_rows || 0
     const rows = tableData?.rows || []
@@ -235,8 +264,15 @@ export function DataTab() {
         return columns.find(c => c.name === colName)
     }
 
+    const handleApplyFilter = () => {
+        applyFilter(filterDraft)
+    }
+
     // Cell update handler
     const handleCellUpdate = useCallback(async (rowIdx: number, colIdx: number, newValue: string | null) => {
+        if (isReadOnly) {
+            throw new Error('Connection is read-only')
+        }
         if (!activeConnectionId || !selectedSchema || !selectedTable || !pkColumnName) return
 
         const row = rows[rowIdx]
@@ -258,10 +294,14 @@ export function DataTab() {
         )
 
         await refreshData()
-    }, [activeConnectionId, selectedSchema, selectedTable, pkColumnName, pkColumnIndex, columnNames, rows, refreshData])
+    }, [isReadOnly, activeConnectionId, selectedSchema, selectedTable, pkColumnName, pkColumnIndex, columnNames, rows, refreshData])
 
     // Insert row handler
     const handleInsertRow = async () => {
+        if (isReadOnly) {
+            showToast('Connection is read-only — inserts are disabled.', 'error')
+            return
+        }
         if (!activeConnectionId || !selectedSchema || !selectedTable) return
 
         setIsOperating(true)
@@ -277,9 +317,10 @@ export function DataTab() {
             await refreshData()
             setShowInsertDialog(false)
             setInsertValues({})
+            showToast('Row inserted', 'success')
         } catch (error) {
             console.error('Failed to insert row:', error)
-            alert(error instanceof Error ? error.message : 'Failed to insert row')
+            showToast(error instanceof Error ? error.message : 'Failed to insert row', 'error')
         } finally {
             setIsOperating(false)
         }
@@ -287,6 +328,10 @@ export function DataTab() {
 
     // Delete rows handler
     const handleDeleteRows = async () => {
+        if (isReadOnly) {
+            showToast('Connection is read-only — deletes are disabled.', 'error')
+            return
+        }
         if (!activeConnectionId || !selectedSchema || !selectedTable || !pkColumnName) return
 
         setIsOperating(true)
@@ -303,9 +348,10 @@ export function DataTab() {
             await refreshData()
             setSelectedRows(new Set())
             setShowDeleteDialog(false)
+            showToast(`Deleted ${pkValues.length} row(s)`, 'success')
         } catch (error) {
             console.error('Failed to delete rows:', error)
-            alert(error instanceof Error ? error.message : 'Failed to delete rows')
+            showToast(error instanceof Error ? error.message : 'Failed to delete rows', 'error')
         } finally {
             setIsOperating(false)
         }
@@ -324,37 +370,71 @@ export function DataTab() {
             {/* Toolbar */}
             <div className="p-3 border-b border-border flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-1"
-                        onClick={() => {
-                            setInsertValues({})
-                            setShowInsertDialog(true)
-                        }}
-                    >
-                        <Plus className="w-4 h-4" />
-                        Insert Row
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-1 text-destructive hover:text-destructive"
-                        disabled={selectedRows.size === 0}
-                        onClick={() => setShowDeleteDialog(true)}
-                    >
-                        <Trash2 className="w-4 h-4" />
-                        Delete ({selectedRows.size})
-                    </Button>
+                    {isReadOnly ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-orange-400 bg-orange-400/10 px-2 py-1.5 rounded-md">
+                            <Lock className="w-3.5 h-3.5" />
+                            Read-only
+                        </span>
+                    ) : (
+                        <>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 gap-1"
+                                onClick={() => {
+                                    setInsertValues({})
+                                    setShowInsertDialog(true)
+                                }}
+                            >
+                                <Plus className="w-4 h-4" />
+                                Insert Row
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 gap-1 text-destructive hover:text-destructive"
+                                disabled={selectedRows.size === 0}
+                                onClick={() => setShowDeleteDialog(true)}
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                Delete ({selectedRows.size})
+                            </Button>
+                        </>
+                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground font-medium">FILTER</span>
                     <Input
-                        value={filter}
-                        onChange={(e) => setFilter(e.target.value)}
-                        placeholder="WHERE clause..."
+                        value={filterDraft}
+                        onChange={(e) => setFilterDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleApplyFilter()
+                        }}
+                        placeholder="e.g. status = 'active'"
                         className="w-60 h-8 text-sm bg-input font-mono"
                     />
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8"
+                        onClick={handleApplyFilter}
+                        disabled={isLoadingData}
+                    >
+                        Apply
+                    </Button>
+                    {filter && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8"
+                            onClick={() => {
+                                setFilterDraft('')
+                                applyFilter('')
+                            }}
+                        >
+                            Clear
+                        </Button>
+                    )}
                 </div>
                 <div className="flex-1" />
                 <Button
@@ -372,6 +452,12 @@ export function DataTab() {
                 </Button>
             </div>
 
+            {error && (
+                <div className="px-3 py-2 text-sm text-destructive bg-destructive/10 border-b border-border">
+                    {error}
+                </div>
+            )}
+
             {/* Loading State */}
             {isLoadingData && rows.length === 0 && (
                 <div className="flex-1 flex items-center justify-center">
@@ -383,21 +469,23 @@ export function DataTab() {
             )}
 
             {/* Empty State */}
-            {!isLoadingData && rows.length === 0 && (
+            {!isLoadingData && rows.length === 0 && !error && (
                 <div className="flex-1 flex items-center justify-center text-muted-foreground">
                     <div className="text-center">
-                        <p className="mb-2">No data in this table</p>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                                setInsertValues({})
-                                setShowInsertDialog(true)
-                            }}
-                        >
-                            <Plus className="w-4 h-4 mr-1" />
-                            Insert First Row
-                        </Button>
+                        <p className="mb-2">{filter ? 'No rows match this filter' : 'No data in this table'}</p>
+                        {!isReadOnly && !filter && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                    setInsertValues({})
+                                    setShowInsertDialog(true)
+                                }}
+                            >
+                                <Plus className="w-4 h-4 mr-1" />
+                                Insert First Row
+                            </Button>
+                        )}
                     </div>
                 </div>
             )}
@@ -409,10 +497,12 @@ export function DataTab() {
                         <thead className="bg-muted/30 sticky top-0 z-10">
                             <tr className="border-b border-border">
                                 <th className="w-10 p-3 text-left sticky left-0 bg-muted/30">
-                                    <Checkbox
-                                        checked={selectedRows.size === rows.length && rows.length > 0}
-                                        onCheckedChange={toggleAll}
-                                    />
+                                    {!isReadOnly && (
+                                        <Checkbox
+                                            checked={selectedRows.size === rows.length && rows.length > 0}
+                                            onCheckedChange={toggleAll}
+                                        />
+                                    )}
                                 </th>
                                 {columnNames.map((colName) => {
                                     const colInfo = getColumnInfo(colName)
@@ -454,17 +544,20 @@ export function DataTab() {
                                     )}
                                 >
                                     <td className="p-3 sticky left-0 bg-background">
-                                        <Checkbox
-                                            checked={selectedRows.has(rowIdx)}
-                                            onCheckedChange={() => toggleRow(rowIdx)}
-                                        />
+                                        {!isReadOnly && (
+                                            <Checkbox
+                                                checked={selectedRows.has(rowIdx)}
+                                                onCheckedChange={() => toggleRow(rowIdx)}
+                                            />
+                                        )}
                                     </td>
                                     {row.map((cell, colIdx) => (
                                         <td key={colIdx} className="p-3 whitespace-nowrap">
                                             <EditableCell
                                                 value={cell}
                                                 column={columnNames[colIdx]}
-                                                isEditing={editingCell?.rowIdx === rowIdx && editingCell?.colIdx === colIdx}
+                                                readOnly={isReadOnly}
+                                                isEditing={!isReadOnly && editingCell?.rowIdx === rowIdx && editingCell?.colIdx === colIdx}
                                                 onStartEdit={() => setEditingCell({ rowIdx, colIdx })}
                                                 onCancelEdit={() => setEditingCell(null)}
                                                 onSave={(newValue) => handleCellUpdate(rowIdx, colIdx, newValue)}
