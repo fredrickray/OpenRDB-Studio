@@ -27,6 +27,7 @@ pub fn run() {
             ipc::command::save_password,
             ipc::command::get_password,
             ipc::command::delete_password,
+            ipc::command::list_foreign_keys,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

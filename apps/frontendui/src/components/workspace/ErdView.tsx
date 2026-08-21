@@ -1,9 +1,9 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
-import { ZoomIn, ZoomOut, Maximize2, Sparkles, Loader2 } from "lucide-react"
+import { ZoomIn, ZoomOut, Maximize2, Sparkles, Loader2, KeyRound, Link2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTableStore } from "@/stores/tableStore"
-import { api, type ColumnInfo } from "@/lib/api"
+import { api, type ColumnInfo, type ForeignKeyInfo } from "@/lib/api"
 
 interface TablePosition {
     id: string
@@ -75,9 +75,9 @@ function TableCard({ table, zoom, onMouseDown, isDragging, isSelected }: TableCa
                             )}
                         >
                             <div className="flex items-center gap-2">
-                                {col.isPrimaryKey && <span className="text-yellow-400 text-sm">🔑</span>}
-                                {col.isForeignKey && <span className="text-blue-400 text-sm">🔗</span>}
-                                {!col.isPrimaryKey && !col.isForeignKey && <span className="w-4 text-center text-muted-foreground">○</span>}
+                                {col.isPrimaryKey && <KeyRound className="w-3.5 h-3.5 text-yellow-400" />}
+                                {col.isForeignKey && <Link2 className="w-3.5 h-3.5 text-blue-400" />}
+                                {!col.isPrimaryKey && !col.isForeignKey && <span className="w-3.5 text-center text-muted-foreground">○</span>}
                                 <span className={cn("font-medium", col.isForeignKey && "text-primary")}>{col.name}</span>
                             </div>
                             <span className="text-muted-foreground text-[10px] ml-2">{col.type}</span>
@@ -99,6 +99,7 @@ export function ErdView() {
     const [dragStart, setDragStart] = useState({ x: 0, y: 0, tableX: 0, tableY: 0, zoom: 1 })
     const [isLoading, setIsLoading] = useState(false)
     const [tableColumns, setTableColumns] = useState<Record<string, ColumnInfo[]>>({})
+    const [foreignKeys, setForeignKeys] = useState<ForeignKeyInfo[]>([])
     const [isPanning, setIsPanning] = useState(false)
     const [panStart, setPanStart] = useState({ x: 0, y: 0, panX: 0, panY: 0 })
     const canvasRef = useRef<HTMLDivElement>(null)
@@ -106,13 +107,21 @@ export function ErdView() {
     // Create stable table ID
     const getTableId = (schema: string, name: string) => `${schema}.${name}`
 
-    // Load columns for all tables when tables change
+    // Load columns + foreign keys when tables change
     useEffect(() => {
         if (!activeConnectionId || tables.length === 0) return
 
         const loadAllColumns = async () => {
             setIsLoading(true)
             const columnsMap: Record<string, ColumnInfo[]> = {}
+
+            try {
+                const fks = await api.listForeignKeys(activeConnectionId)
+                setForeignKeys(fks)
+            } catch (error) {
+                console.error('Failed to load foreign keys:', error)
+                setForeignKeys([])
+            }
 
             for (const table of tables) {
                 if (!table.name) continue
@@ -190,34 +199,15 @@ export function ErdView() {
         }
     }, [selectedTable, selectedSchema, tablePositions, zoom])
 
-    // Compute relationships from foreign keys
+    // Compute relationships from real foreign key metadata
     const relationships = useMemo(() => {
-        const rels: { from: string; fromColumn: string; to: string; toColumn: string }[] = []
-
-        // This is a simplified version - in production you'd want actual FK metadata from the database
-        tablePositions.forEach(table => {
-            table.columns.forEach(col => {
-                if (col.isForeignKey) {
-                    // Try to guess the referenced table from column name (e.g., user_id -> users)
-                    const possibleRef = col.name.replace(/_id$/, 's')
-                    const refTable = tablePositions.find(t =>
-                        t.name === possibleRef ||
-                        t.name === col.name.replace(/_id$/, '')
-                    )
-                    if (refTable) {
-                        rels.push({
-                            from: refTable.id,
-                            fromColumn: 'id',
-                            to: table.id,
-                            toColumn: col.name
-                        })
-                    }
-                }
-            })
-        })
-
-        return rels
-    }, [tablePositions])
+        return foreignKeys.map((fk) => ({
+            from: getTableId(fk.to_schema, fk.to_table),
+            fromColumn: fk.to_column,
+            to: getTableId(fk.from_schema, fk.from_table),
+            toColumn: fk.from_column,
+        }))
+    }, [foreignKeys])
 
     const handleZoomIn = () => setZoom(z => Math.min(z + 0.1, 2))
     const handleZoomOut = () => setZoom(z => Math.max(z - 0.1, 0.3))

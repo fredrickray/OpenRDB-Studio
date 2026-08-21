@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useTableStore } from "@/stores/tableStore"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
-import { Key, Type, Hash, ToggleLeft, Calendar, RefreshCw, Loader2, Pencil } from "lucide-react"
+import { Key, Type, Hash, ToggleLeft, Calendar, RefreshCw, Loader2, KeyRound, Link2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -108,7 +108,6 @@ export function StructureTab() {
                                         <th className="p-3 text-left text-xs font-medium text-muted-foreground">TYPE</th>
                                         <th className="p-3 text-left text-xs font-medium text-muted-foreground w-20">NULLABLE</th>
                                         <th className="p-3 text-left text-xs font-medium text-muted-foreground">DEFAULT</th>
-                                        <th className="p-3 text-left text-xs font-medium text-muted-foreground w-16">ACTIONS</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -117,10 +116,10 @@ export function StructureTab() {
                                             <td className="p-3">
                                                 <div className="flex gap-1">
                                                     {col.is_primary_key && (
-                                                        <span className="text-yellow-400 text-xs" title="Primary Key">🔑</span>
+                                                        <KeyRound className="w-3.5 h-3.5 text-yellow-400" aria-label="Primary key" />
                                                     )}
                                                     {col.is_foreign_key && (
-                                                        <span className="text-blue-400 text-xs" title="Foreign Key">🔗</span>
+                                                        <Link2 className="w-3.5 h-3.5 text-blue-400" aria-label="Foreign key" />
                                                     )}
                                                 </div>
                                             </td>
@@ -149,11 +148,6 @@ export function StructureTab() {
                                                     <span className="text-muted-foreground/50 text-xs">NULL</span>
                                                 )}
                                             </td>
-                                            <td className="p-3">
-                                                <Button variant="ghost" size="icon" className="w-6 h-6">
-                                                    <Pencil className="w-3 h-3" />
-                                                </Button>
-                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -168,7 +162,7 @@ export function StructureTab() {
                             <div className="space-y-1">
                                 {columns.filter(c => c.is_primary_key).map(c => (
                                     <div key={c.name} className="text-xs text-muted-foreground flex items-center gap-2">
-                                        <span className="text-yellow-400">🔑</span>
+                                        <KeyRound className="w-3.5 h-3.5 text-yellow-400" />
                                         {c.name}
                                     </div>
                                 ))}
@@ -183,7 +177,7 @@ export function StructureTab() {
                             <div className="space-y-1">
                                 {columns.filter(c => c.is_foreign_key).map(c => (
                                     <div key={c.name} className="text-xs text-muted-foreground flex items-center gap-2">
-                                        <span className="text-blue-400">🔗</span>
+                                        <Link2 className="w-3.5 h-3.5 text-blue-400" />
                                         {c.name}
                                     </div>
                                 ))}

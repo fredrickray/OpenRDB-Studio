@@ -2,8 +2,38 @@ use sqlx::{PgPool, Row, Column};
 use crate::adapters::postgres::models::QueryResult;
 
 fn is_safe_query(sql: &str) -> bool {
-    let normalized = sql.trim().to_lowercase();
-    normalized.starts_with("select")
+    let normalized = sql
+        .trim()
+        .trim_start_matches(|c: char| c == '(' || c.is_whitespace())
+        .to_lowercase();
+
+    // Strip leading SQL comments
+    let mut s = normalized.as_str();
+    loop {
+        let trimmed = s.trim_start();
+        if trimmed.starts_with("--") {
+            if let Some(pos) = trimmed.find('\n') {
+                s = &trimmed[pos + 1..];
+                continue;
+            }
+            return false;
+        }
+        if trimmed.starts_with("/*") {
+            if let Some(pos) = trimmed.find("*/") {
+                s = &trimmed[pos + 2..];
+                continue;
+            }
+            return false;
+        }
+        s = trimmed;
+        break;
+    }
+
+    s.starts_with("select")
+        || s.starts_with("with")
+        || s.starts_with("explain")
+        || s.starts_with("show")
+        || s.starts_with("values")
 }
 
 pub async fn execute_query(
@@ -11,7 +41,7 @@ pub async fn execute_query(
     sql: &str,
 ) -> Result<QueryResult, String> {
     if !is_safe_query(sql) {
-        return Err("Only SELECT queries are allowed".to_string());
+        return Err("Only read queries are allowed (SELECT, WITH, EXPLAIN, SHOW, VALUES)".to_string());
     }
 
     let rows = sqlx::query(sql)
