@@ -15,6 +15,7 @@ pub fn run() {
             ipc::command::disconnect,
             ipc::command::list_connections,
             ipc::command::list_databases,
+            ipc::command::create_database,
             ipc::command::list_tables,
             ipc::command::list_columns,
             ipc::command::get_table_data,

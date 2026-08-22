@@ -1,34 +1,32 @@
-import { useState, useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { useConnectionStore, type Connection } from "@/stores/connectionStore"
+import { useConnectionStore, type ConnectionColor } from "@/stores/connectionStore"
 import { useTableStore } from "@/stores/tableStore"
 import {
     Dialog,
     DialogContent,
-    DialogHeader,
-    DialogTitle,
     DialogDescription,
     DialogFooter,
+    DialogHeader,
+    DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Database, Eye, EyeOff, Trash2, CheckCircle, Loader2, AlertCircle, ArrowRight, AlertTriangle } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { AlertCircle, Loader2, Trash2, AlertTriangle } from "lucide-react"
+import { buildPostgresUri, parsePostgresUri } from "@/lib/pgUri"
 import { api } from "@/lib/api"
-import type { DatabaseInfo } from "@/lib/api"
 
-const emptyForm = (): Omit<Connection, 'id' | 'status'> => ({
-    name: '',
-    host: 'localhost',
-    port: 5432,
-    username: 'postgres',
-    password: '',
-    database: '',
-    sslRequired: false,
-    readOnly: false,
-    color: 'blue',
-})
+const COLORS: { value: ConnectionColor; label: string; className: string }[] = [
+    { value: "none", label: "No Color", className: "bg-muted" },
+    { value: "blue", label: "Blue", className: "bg-blue-500" },
+    { value: "green", label: "Green", className: "bg-green-500" },
+    { value: "purple", label: "Purple", className: "bg-purple-500" },
+    { value: "yellow", label: "Yellow", className: "bg-yellow-500" },
+    { value: "red", label: "Red", className: "bg-red-500" },
+]
 
 export function ConnectionModal() {
     const {
@@ -39,410 +37,416 @@ export function ConnectionModal() {
         updateConnection,
         deleteConnection,
         connectToDatabase,
+        refreshDatabases,
+        setExpanded,
+        setActiveConnection,
     } = useConnectionStore()
-    const [showPassword, setShowPassword] = useState(false)
-    const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
-    const [testMessage, setTestMessage] = useState('')
-    const [serverVersion, setServerVersion] = useState<string | null>(null)
-    const [showDatabaseList, setShowDatabaseList] = useState(false)
-    const [databaseList, setDatabaseList] = useState<DatabaseInfo[]>([])
-    const [isListingDatabases, setIsListingDatabases] = useState(false)
-    const [listError, setListError] = useState<string | null>(null)
-    const [isConnecting, setIsConnecting] = useState(false)
-    const [connectError, setConnectError] = useState<string | null>(null)
-    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-
+    const setActiveTableConnection = useTableStore((s) => s.setActiveConnection)
     const navigate = useNavigate()
-    const setActiveTableConnection = useTableStore((state) => state.setActiveConnection)
 
-    const [formData, setFormData] = useState<Omit<Connection, 'id' | 'status'>>(emptyForm())
+    const [editUri, setEditUri] = useState(true)
+    const [uri, setUri] = useState("postgresql://postgres@localhost:5432/")
+    const [name, setName] = useState("")
+    const [color, setColor] = useState<ConnectionColor>("none")
+    const [favorite, setFavorite] = useState(false)
+    const [sslRequired, setSslRequired] = useState(false)
+    const [readOnly, setReadOnly] = useState(false)
+    const [password, setPassword] = useState("")
+    const [host, setHost] = useState("localhost")
+    const [port, setPort] = useState(5432)
+    const [username, setUsername] = useState("postgres")
+    const [database, setDatabase] = useState("")
+
+    const [isSaving, setIsSaving] = useState(false)
+    const [isConnecting, setIsConnecting] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+    const [uriError, setUriError] = useState<string | null>(null)
 
     useEffect(() => {
         if (!isModalOpen) return
-        setTestStatus('idle')
-        setTestMessage('')
-        setServerVersion(null)
-        setConnectError(null)
+        setError(null)
+        setUriError(null)
         setShowDeleteConfirm(false)
+        setIsSaving(false)
+        setIsConnecting(false)
+
         if (editingConnection) {
-            setFormData({
-                name: editingConnection.name,
-                host: editingConnection.host,
-                port: editingConnection.port,
-                username: editingConnection.username,
-                password: editingConnection.password,
-                database: editingConnection.database,
-                sslRequired: editingConnection.sslRequired,
-                readOnly: editingConnection.readOnly,
-                color: editingConnection.color,
-            })
+            setName(editingConnection.name)
+            setHost(editingConnection.host)
+            setPort(editingConnection.port)
+            setUsername(editingConnection.username)
+            setPassword(editingConnection.password)
+            setDatabase(editingConnection.database || "")
+            setSslRequired(editingConnection.sslRequired)
+            setReadOnly(editingConnection.readOnly)
+            setColor(editingConnection.color === "blue" && !editingConnection.favorite ? editingConnection.color : editingConnection.color)
+            setFavorite(editingConnection.favorite)
+            setUri(
+                buildPostgresUri({
+                    host: editingConnection.host,
+                    port: editingConnection.port,
+                    username: editingConnection.username,
+                    password: editingConnection.password,
+                    database: editingConnection.database,
+                    sslRequired: editingConnection.sslRequired,
+                })
+            )
+            setEditUri(true)
         } else {
-            setFormData(emptyForm())
+            setName("")
+            setHost("localhost")
+            setPort(5432)
+            setUsername("postgres")
+            setPassword("")
+            setDatabase("")
+            setSslRequired(false)
+            setReadOnly(false)
+            setColor("none")
+            setFavorite(false)
+            setUri("postgresql://postgres@localhost:5432/")
+            setEditUri(true)
         }
     }, [isModalOpen, editingConnection])
 
-    const handleTestConnection = async () => {
-        setTestStatus('testing')
-        setTestMessage('')
-        setServerVersion(null)
+    // Keep URI in sync when field mode is used
+    useEffect(() => {
+        if (editUri) return
+        setUri(
+            buildPostgresUri({
+                host,
+                port,
+                username,
+                password,
+                database,
+                sslRequired,
+            })
+        )
+    }, [editUri, host, port, username, password, database, sslRequired])
 
-        try {
-            const config = {
-                host: formData.host,
-                port: formData.port,
-                username: formData.username,
-                password: formData.password,
-                database: formData.database,
-                ssl_required: formData.sslRequired,
-            }
-
-            const result = await api.testConnection(config)
-
-            if (result.success) {
-                setTestStatus('success')
-                setTestMessage(result.message)
-                setServerVersion(result.server_version)
-            } else {
-                setTestStatus('error')
-                setTestMessage(result.message)
-            }
-        } catch (error) {
-            setTestStatus('error')
-            setTestMessage(error instanceof Error ? error.message : 'Connection test failed')
+    const applyUriToFields = (value: string) => {
+        setUri(value)
+        const parsed = parsePostgresUri(value)
+        if (!parsed) {
+            setUriError("Invalid connection URI")
+            return
         }
+        setUriError(null)
+        setHost(parsed.host)
+        setPort(parsed.port)
+        setUsername(parsed.username)
+        setPassword(parsed.password)
+        setDatabase(parsed.database)
+        setSslRequired(parsed.sslRequired)
     }
 
-    const handleListDatabases = async () => {
-        setIsListingDatabases(true)
-        setListError(null)
-        setShowDatabaseList(true)
-
-        try {
-            const config = {
-                host: formData.host,
-                port: formData.port,
-                username: formData.username,
-                password: formData.password,
-                database: 'postgres',
-                ssl_required: formData.sslRequired,
+    const resolveFields = () => {
+        if (editUri) {
+            const parsed = parsePostgresUri(uri)
+            if (!parsed) {
+                setUriError("Invalid connection URI")
+                return null
             }
+            setUriError(null)
+            return {
+                host: parsed.host,
+                port: parsed.port,
+                username: parsed.username,
+                password: parsed.password,
+                database: parsed.database,
+                sslRequired: parsed.sslRequired,
+            }
+        }
+        return { host, port, username, password, database, sslRequired }
+    }
 
-            const databases = await api.listDatabases(config)
-            setDatabaseList(databases)
-        } catch (error) {
-            setListError(error instanceof Error ? error.message : 'Failed to list databases')
+    const payload = useMemo(
+        () => ({
+            name: name.trim() || `${host}:${port}`,
+            host,
+            port,
+            username,
+            password,
+            database,
+            sslRequired,
+            readOnly,
+            color: color === "none" ? ("blue" as ConnectionColor) : color,
+            favorite,
+        }),
+        [name, host, port, username, password, database, sslRequired, readOnly, color, favorite]
+    )
+
+    const saveConnection = (): string => {
+        const fields = resolveFields()
+        if (!fields) throw new Error("Invalid connection URI")
+
+        const data = {
+            ...payload,
+            ...fields,
+            name: name.trim() || `${fields.host}:${fields.port}`,
+            color: color === "none" ? ("blue" as const) : color,
+        }
+
+        if (editingConnection) {
+            updateConnection(editingConnection.id, data)
+            return editingConnection.id
+        }
+        return addConnection({ ...data, status: "disconnected" })
+    }
+
+    const handleSave = async () => {
+        setIsSaving(true)
+        setError(null)
+        try {
+            const id = saveConnection()
+            setActiveConnection(id)
+            closeModal()
+        } catch (e) {
+            setError(e instanceof Error ? e.message : "Failed to save")
         } finally {
-            setIsListingDatabases(false)
+            setIsSaving(false)
         }
     }
 
-    const handleSelectDatabase = (dbName: string) => {
-        setFormData({ ...formData, database: dbName })
-        setShowDatabaseList(false)
-    }
-
-    const handleSave = () => {
-        if (editingConnection) {
-            updateConnection(editingConnection.id, formData)
-        } else {
-            addConnection({ ...formData, status: 'disconnected' })
-        }
-        closeModal()
-    }
-
-    const handleConfirmDelete = () => {
-        if (editingConnection) {
-            deleteConnection(editingConnection.id)
-            setShowDeleteConfirm(false)
-            closeModal()
-        }
-    }
-
-    const handleConnectNow = async () => {
+    const handleConnect = async (andSave: boolean) => {
         setIsConnecting(true)
-        setConnectError(null)
-
+        setError(null)
         try {
-            let connectionId: string
+            const fields = resolveFields()
+            if (!fields) throw new Error("Invalid connection URI")
 
-            if (editingConnection) {
-                updateConnection(editingConnection.id, formData)
-                connectionId = editingConnection.id
+            let id: string
+            if (andSave || editingConnection) {
+                id = saveConnection()
             } else {
-                connectionId = addConnection({ ...formData, status: 'disconnected' })
+                // ephemeral path still saves so the tree can show it
+                id = saveConnection()
             }
 
-            const connectionInfo = await connectToDatabase(connectionId)
-
-            if (!connectionInfo) {
-                const err = useConnectionStore.getState().connections.find((c) => c.id === connectionId)?.errorMessage
-                throw new Error(err || 'Failed to connect')
+            // Probe server + list DBs first (bootstrap)
+            const test = await api.testConnection({
+                host: fields.host,
+                port: fields.port,
+                username: fields.username,
+                password: fields.password,
+                database: fields.database || "postgres",
+                ssl_required: fields.sslRequired,
+            })
+            if (!test.success) {
+                throw new Error(test.message)
             }
 
-            setActiveTableConnection(connectionInfo.id, formData.database)
+            setExpanded(id, true)
+            await refreshDatabases(id)
+
+            const targetDb = fields.database?.trim()
+            if (targetDb) {
+                const info = await connectToDatabase(id, targetDb)
+                if (info) {
+                    setActiveTableConnection(info.id, targetDb)
+                    closeModal()
+                    navigate("/workspace")
+                    return
+                }
+            }
+
+            // No specific DB in URI — stay on connections page with tree expanded
+            setActiveConnection(id)
             closeModal()
-            navigate('/workspace')
-        } catch (error) {
-            setConnectError(error instanceof Error ? error.message : 'Failed to connect')
+        } catch (e) {
+            setError(e instanceof Error ? e.message : "Failed to connect")
         } finally {
             setIsConnecting(false)
         }
     }
 
+    const handleDelete = () => {
+        if (!editingConnection) return
+        deleteConnection(editingConnection.id)
+        setShowDeleteConfirm(false)
+        closeModal()
+    }
+
     return (
         <>
             <Dialog open={isModalOpen} onOpenChange={(open) => !open && closeModal()}>
-                <DialogContent className="sm:max-w-[480px]">
+                <DialogContent className="sm:max-w-[560px]">
                     <DialogHeader>
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
-                                <Database className="w-5 h-5 text-primary" />
-                            </div>
-                            <div>
-                                <DialogTitle>
-                                    {editingConnection ? 'Edit Connection' : 'New Connection'}
-                                </DialogTitle>
-                                <DialogDescription>
-                                    Configure your PostgreSQL connection settings.
-                                </DialogDescription>
-                            </div>
-                        </div>
+                        <DialogTitle>
+                            {editingConnection ? "Edit Connection" : "New Connection"}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Save a server connection. Multiple databases on the same host can live under one connection.
+                        </DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-6 py-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="name">Connection Name</Label>
-                            <Input
-                                id="name"
-                                placeholder="My Database"
-                                value={formData.name}
-                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    <div className="space-y-5 py-2">
+                        <div className="flex items-center justify-between gap-3">
+                            <Label htmlFor="edit-uri" className="text-sm">
+                                Edit Connection String
+                            </Label>
+                            <Switch
+                                id="edit-uri"
+                                checked={editUri}
+                                onCheckedChange={setEditUri}
                             />
                         </div>
 
-                        <div className="space-y-3">
-                            <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                                <span className="w-4 h-px bg-border" />
-                                SERVER INFO
-                            </h4>
-                            <div className="grid grid-cols-3 gap-3">
-                                <div className="col-span-2 space-y-2">
-                                    <Label htmlFor="host">Host</Label>
-                                    <Input
-                                        id="host"
-                                        placeholder="localhost"
-                                        value={formData.host}
-                                        onChange={(e) => setFormData({ ...formData, host: e.target.value })}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="port">Port</Label>
-                                    <Input
-                                        id="port"
-                                        type="number"
-                                        placeholder="5432"
-                                        value={formData.port}
-                                        onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) || 5432 })}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="space-y-3">
-                            <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                                <span className="w-4 h-px bg-border" />
-                                AUTHENTICATION
-                            </h4>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-2">
-                                    <Label htmlFor="username">Username</Label>
-                                    <Input
-                                        id="username"
-                                        placeholder="postgres"
-                                        value={formData.username}
-                                        onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="password">Password</Label>
-                                    <div className="relative">
-                                        <Input
-                                            id="password"
-                                            type={showPassword ? "text" : "password"}
-                                            placeholder="••••••••••"
-                                            value={formData.password}
-                                            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                            className="pr-10"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPassword(!showPassword)}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                                            aria-label={showPassword ? 'Hide password' : 'Show password'}
-                                        >
-                                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="database">Initial Database</Label>
-                            <div className="flex gap-2">
-                                <Input
-                                    id="database"
-                                    placeholder="main_production"
-                                    value={formData.database}
-                                    onChange={(e) => setFormData({ ...formData, database: e.target.value })}
-                                    className="flex-1"
+                        {editUri ? (
+                            <div className="space-y-2">
+                                <Label htmlFor="uri">URI</Label>
+                                <textarea
+                                    id="uri"
+                                    value={uri}
+                                    onChange={(e) => applyUriToFields(e.target.value)}
+                                    rows={3}
+                                    className="w-full rounded-md border border-input bg-input px-3 py-2 text-sm font-mono resize-y min-h-[72px]"
+                                    placeholder="postgresql://user:password@localhost:5432/mydb"
                                 />
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="shrink-0"
-                                    onClick={handleListDatabases}
-                                    disabled={isListingDatabases}
+                                {uriError && (
+                                    <p className="text-xs text-destructive">{uriError}</p>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2 col-span-2">
+                                    <Label>Host</Label>
+                                    <Input value={host} onChange={(e) => setHost(e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Port</Label>
+                                    <Input
+                                        type="number"
+                                        value={port}
+                                        onChange={(e) => setPort(parseInt(e.target.value) || 5432)}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Database (optional)</Label>
+                                    <Input
+                                        value={database}
+                                        onChange={(e) => setDatabase(e.target.value)}
+                                        placeholder="leave empty to pick later"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Username</Label>
+                                    <Input value={username} onChange={(e) => setUsername(e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Password</Label>
+                                    <Input
+                                        type="password"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-[1fr_140px] gap-3">
+                            <div className="space-y-2">
+                                <Label htmlFor="conn-name">Name</Label>
+                                <Input
+                                    id="conn-name"
+                                    placeholder="Localhost"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="conn-color">Color</Label>
+                                <select
+                                    id="conn-color"
+                                    className="w-full h-9 rounded-md border border-input bg-input px-2 text-sm"
+                                    value={color}
+                                    onChange={(e) => setColor(e.target.value as ConnectionColor)}
                                 >
-                                    {isListingDatabases ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Fetch List'}
-                                </Button>
+                                    {COLORS.map((c) => (
+                                        <option key={c.value} value={c.value}>
+                                            {c.label}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
+
+                        <label className="flex items-start gap-3 cursor-pointer">
+                            <Checkbox
+                                checked={favorite}
+                                onCheckedChange={(v) => setFavorite(v === true)}
+                                className="mt-0.5"
+                            />
+                            <span>
+                                <span className="text-sm font-medium block">Favorite this connection</span>
+                                <span className="text-xs text-muted-foreground">
+                                    Pins it to the top of the connections list.
+                                </span>
+                            </span>
+                        </label>
 
                         <div className="flex items-center gap-6">
                             <div className="flex items-center gap-2">
-                                <Switch
-                                    id="ssl"
-                                    checked={formData.sslRequired}
-                                    onCheckedChange={(checked) => setFormData({ ...formData, sslRequired: checked })}
-                                />
-                                <Label htmlFor="ssl" className="text-sm font-normal cursor-pointer">
+                                <Switch id="ssl-m" checked={sslRequired} onCheckedChange={setSslRequired} />
+                                <Label htmlFor="ssl-m" className="text-sm font-normal cursor-pointer">
                                     SSL Required
                                 </Label>
                             </div>
                             <div className="flex items-center gap-2">
-                                <Switch
-                                    id="readonly"
-                                    checked={formData.readOnly}
-                                    onCheckedChange={(checked) => setFormData({ ...formData, readOnly: checked })}
-                                />
-                                <Label htmlFor="readonly" className="text-sm font-normal cursor-pointer">
-                                    Read-only mode
+                                <Switch id="ro-m" checked={readOnly} onCheckedChange={setReadOnly} />
+                                <Label htmlFor="ro-m" className="text-sm font-normal cursor-pointer">
+                                    Read-only
                                 </Label>
                             </div>
                         </div>
 
-                        {testStatus === 'success' && (
-                            <div className="flex items-center gap-2 text-green-500 text-sm bg-green-500/10 px-3 py-2 rounded-md">
-                                <CheckCircle className="w-4 h-4" />
-                                <span>{testMessage}</span>
-                                {serverVersion && (
-                                    <span className="text-muted-foreground text-xs ml-auto">
-                                        {serverVersion}
-                                    </span>
-                                )}
-                            </div>
-                        )}
-
-                        {testStatus === 'error' && (
-                            <div className="flex items-center gap-2 text-red-500 text-sm bg-red-500/10 px-3 py-2 rounded-md">
-                                <AlertCircle className="w-4 h-4" />
-                                <span>{testMessage}</span>
+                        {error && (
+                            <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md">
+                                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                                <span>{error}</span>
                             </div>
                         )}
                     </div>
 
-                    {connectError && (
-                        <div className="flex items-center gap-2 text-red-500 text-sm bg-red-500/10 px-3 py-2 rounded-md">
-                            <AlertCircle className="w-4 h-4" />
-                            <span>{connectError}</span>
-                        </div>
-                    )}
-
-                    <div className="flex items-center gap-3">
-                        <Button
-                            onClick={handleConnectNow}
-                            className="flex-1"
-                            disabled={isConnecting || !formData.database}
-                        >
-                            {isConnecting ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                                    Connecting...
-                                </>
-                            ) : (
-                                <>
-                                    Connect Now
-                                    <ArrowRight className="w-4 h-4 ml-2" />
-                                </>
-                            )}
-                        </Button>
-                        <Button
-                            variant="outline"
-                            onClick={handleTestConnection}
-                            disabled={testStatus === 'testing' || isConnecting}
-                        >
-                            {testStatus === 'testing' ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    Testing...
-                                </>
-                            ) : (
-                                'Test'
-                            )}
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            onClick={handleSave}
-                            disabled={isConnecting}
-                        >
-                            Save
-                        </Button>
-                        {editingConnection && (
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setShowDeleteConfirm(true)}
-                                aria-label="Delete connection"
-                            >
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                            </Button>
-                        )}
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog open={showDatabaseList} onOpenChange={setShowDatabaseList}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Select Database</DialogTitle>
-                        <DialogDescription>
-                            Select a database to use for this connection.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="max-h-[300px] overflow-y-auto space-y-2">
-                        {isListingDatabases ? (
-                            <div className="flex justify-center p-4"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
-                        ) : listError ? (
-                            <div className="text-red-500 p-2 text-sm">{listError}</div>
-                        ) : databaseList.length === 0 ? (
-                            <div className="text-muted-foreground p-2 text-sm">No databases found</div>
-                        ) : (
-                            databaseList.map((db, i) => (
-                                <button
-                                    key={`${db.name}-${i}`}
-                                    className="w-full text-left px-3 py-2 rounded-md hover:bg-accent hover:text-accent-foreground text-sm flex items-center justify-between group transition-colors"
-                                    onClick={() => handleSelectDatabase(db.name)}
+                    <DialogFooter className="flex-row items-center gap-2 sm:justify-between">
+                        <div>
+                            {editingConnection && (
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setShowDeleteConfirm(true)}
+                                    aria-label="Delete connection"
                                 >
-                                    <span className="font-medium">{db.name}</span>
-                                    <div className="text-xs text-muted-foreground flex gap-2">
-                                        {db.owner && <span>{db.owner}</span>}
-                                        {db.size && <span>{db.size}</span>}
-                                    </div>
-                                </button>
-                            ))
-                        )}
-                    </div>
+                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                </Button>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button variant="ghost" onClick={closeModal}>
+                                Cancel
+                            </Button>
+                            <Button variant="outline" onClick={handleSave} disabled={isSaving || isConnecting}>
+                                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={() => handleConnect(false)}
+                                disabled={isConnecting}
+                            >
+                                Connect
+                            </Button>
+                            <Button onClick={() => handleConnect(true)} disabled={isConnecting}>
+                                {isConnecting ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                        Connecting…
+                                    </>
+                                ) : (
+                                    "Save & Connect"
+                                )}
+                            </Button>
+                        </div>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -454,14 +458,14 @@ export function ConnectionModal() {
                             Delete connection?
                         </DialogTitle>
                         <DialogDescription>
-                            This removes “{editingConnection?.name || 'this connection'}” from saved connections. It does not drop any database.
+                            Removes “{editingConnection?.name}” from saved connections. Databases on the server are not dropped.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
                             Cancel
                         </Button>
-                        <Button variant="destructive" onClick={handleConfirmDelete}>
+                        <Button variant="destructive" onClick={handleDelete}>
                             Delete
                         </Button>
                     </DialogFooter>

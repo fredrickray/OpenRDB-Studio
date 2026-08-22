@@ -185,6 +185,13 @@ export const api = {
     },
 
     /**
+     * Create a database on the server
+     */
+    async createDatabase(config: ConnectionConfig, name: string): Promise<boolean> {
+        return callTauri<boolean>('create_database', { config, name })
+    },
+
+    /**
      * Update a single cell in a table
      */
     async updateRow(

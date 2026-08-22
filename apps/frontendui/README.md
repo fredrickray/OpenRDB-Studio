@@ -36,7 +36,9 @@ npm run tauri build
 
 ## Features
 
-- Save PostgreSQL connections (config on disk, passwords in the OS keychain)
+- Save PostgreSQL **server connections** (URI + friendly name); passwords in the OS keychain
+- Expand a connection to browse **databases** on that server (Compass-style tree)
+- Create databases under an existing connection
 - Browse tables, view/edit data (respects read-only mode)
 - Structure view for columns / keys
 - SQL editor with Format, Export CSV, auto-limit, multi-tabs

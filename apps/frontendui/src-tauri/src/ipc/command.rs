@@ -91,6 +91,36 @@ pub async fn list_databases(config: ConnectionConfig) -> Result<Vec<DatabaseInfo
         .collect())
 }
 
+/// Create a new database on the server (connects via postgres maintenance DB)
+#[command]
+pub async fn create_database(
+    config: ConnectionConfig,
+    name: String,
+) -> Result<bool, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Database name is required".to_string());
+    }
+    // Basic identifier validation — quoted identifiers allow most chars but block injection
+    if trimmed.contains('"') || trimmed.contains('\0') || trimmed.contains(';') {
+        return Err("Database name contains invalid characters".to_string());
+    }
+
+    let mut config_for_create = config.clone();
+    config_for_create.database = "postgres".to_string();
+
+    let connection_string = config_for_create.to_connection_string();
+    let pool = create_pool(&connection_string).await?;
+
+    let query = format!("CREATE DATABASE \"{}\"", trimmed.replace('"', "\"\""));
+    sqlx::query(&query)
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("Failed to create database: {}", e))?;
+
+    Ok(true)
+}
+
 /// Establish a connection and store it in app state
 #[command]
 pub async fn connect(

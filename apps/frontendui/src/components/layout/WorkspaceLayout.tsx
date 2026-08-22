@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import { WorkspaceSidebar } from "@/components/workspace/WorkspaceSidebar"
 import { StatusBar } from "@/components/workspace/StatusBar"
 import { useTableStore } from "@/stores/tableStore"
+import { useConnectionStore } from "@/stores/connectionStore"
 import { useWorkspaceUiStore } from "@/stores/workspaceUiStore"
 import { Button } from "@/components/ui/button"
 import { Database, RefreshCw, Table, Columns, Code, Eye } from "lucide-react"
@@ -34,7 +35,10 @@ export function WorkspaceLayout({
         setActiveTab,
         tableData,
         refreshData,
+        activeConnectionId: backendId,
     } = useTableStore()
+    const connections = useConnectionStore((s) => s.connections)
+    const activeServer = connections.find((c) => c.backendId === backendId)
     const { sidebarWidth, sidebarCollapsed, setSidebarWidth, setSidebarCollapsed } = useWorkspaceUiStore()
     const navigate = useNavigate()
     const location = useLocation()
@@ -85,6 +89,12 @@ export function WorkspaceLayout({
 
                 <div className="h-12 border-b border-border flex items-center justify-between px-4 bg-card/50">
                     <div className="flex items-center gap-2 text-sm min-w-0">
+                        {activeServer && (
+                            <>
+                                <span className="text-muted-foreground truncate">{activeServer.name}</span>
+                                <span className="text-muted-foreground">/</span>
+                            </>
+                        )}
                         <span className="text-muted-foreground truncate">{connectedDatabase || 'Database'}</span>
                         {section === 'erd' ? (
                             <>
