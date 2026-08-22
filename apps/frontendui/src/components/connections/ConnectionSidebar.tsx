@@ -1,14 +1,20 @@
-import { Search, Plus } from "lucide-react"
+import { Search, Plus, GripVertical } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ConnectionTreeItem } from "./ConnectionTreeItem"
 import { useConnectionStore } from "@/stores/connectionStore"
-import { useMemo, useState } from "react"
+import { useWorkspaceUiStore } from "@/stores/workspaceUiStore"
+import { useCallback, useMemo, useRef, useState } from "react"
+
+const MIN_WIDTH = 200
+const MAX_WIDTH = 480
 
 export function ConnectionSidebar() {
     const { connections, openModal, isLoaded } = useConnectionStore()
+    const { connectionsSidebarWidth, setConnectionsSidebarWidth } = useWorkspaceUiStore()
     const [searchQuery, setSearchQuery] = useState("")
+    const isResizing = useRef(false)
 
     const filtered = useMemo(() => {
         const q = searchQuery.trim().toLowerCase()
@@ -27,8 +33,44 @@ export function ConnectionSidebar() {
           ? "No connections match your search"
           : "No connections yet"
 
+    const startResizing = useCallback(
+        (e: React.MouseEvent) => {
+            isResizing.current = true
+            e.preventDefault()
+
+            const startX = e.clientX
+            const startWidth = connectionsSidebarWidth
+
+            const handleMouseMove = (moveEvent: MouseEvent) => {
+                if (!isResizing.current) return
+                const next = Math.min(
+                    MAX_WIDTH,
+                    Math.max(MIN_WIDTH, startWidth + (moveEvent.clientX - startX))
+                )
+                setConnectionsSidebarWidth(next)
+            }
+
+            const handleMouseUp = () => {
+                isResizing.current = false
+                document.removeEventListener("mousemove", handleMouseMove)
+                document.removeEventListener("mouseup", handleMouseUp)
+                document.body.style.cursor = ""
+                document.body.style.userSelect = ""
+            }
+
+            document.addEventListener("mousemove", handleMouseMove)
+            document.addEventListener("mouseup", handleMouseUp)
+            document.body.style.cursor = "col-resize"
+            document.body.style.userSelect = "none"
+        },
+        [connectionsSidebarWidth, setConnectionsSidebarWidth]
+    )
+
     return (
-        <div className="w-72 h-full bg-sidebar border-r border-border flex flex-col">
+        <div
+            className="h-full bg-sidebar border-r border-border flex flex-col relative shrink-0"
+            style={{ width: `${connectionsSidebarWidth}px`, minWidth: `${MIN_WIDTH}px` }}
+        >
             <div className="p-3 border-b border-border space-y-3">
                 <div className="flex items-center justify-between gap-2">
                     <h2 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
@@ -76,6 +118,19 @@ export function ConnectionSidebar() {
                     <Plus className="w-4 h-4 mr-2" />
                     New Connection
                 </Button>
+            </div>
+
+            <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize connections sidebar"
+                title="Drag to resize"
+                className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/50 transition-colors group"
+                onMouseDown={startResizing}
+            >
+                <div className="absolute top-1/2 -translate-y-1/2 right-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <GripVertical className="w-3 h-3 text-muted-foreground" />
+                </div>
             </div>
         </div>
     )
