@@ -11,6 +11,9 @@
   --color-primary-hover: #1d4ed8;
   --color-accent: #3b82f6;
   --color-glow: rgba(37, 99, 235, 0.15);
+  --color-code-bg: #0d1117;
+  --color-diagram-fill: #1e293b;
+  --color-diagram-stroke: #334155;
 
   --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;

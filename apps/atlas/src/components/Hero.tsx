@@ -30,7 +30,7 @@ export function Hero() {
             <Reveal delay={2}>
               <p className="mt-5 max-w-lg text-base leading-relaxed text-[var(--color-muted-foreground)] sm:text-lg">
                 A fast, native PostgreSQL workspace built with Tauri and Rust. Connect,
-                query, browse, and visualize — all from one desktop app.
+                query, browse, and visualize in one desktop app.
               </p>
             </Reveal>
 
@@ -99,16 +99,16 @@ function HeroVisual() {
             <line x1="200" y1="110" x2="140" y2="180" stroke="#2563eb" strokeWidth="1.5" opacity="0.4" className="connection-line" style={{ animationDelay: '1.6s' }} />
 
             {/* Table boxes */}
-            <rect x="40" y="38" width="40" height="24" rx="4" fill="#1e293b" stroke="#334155" strokeWidth="1" />
-            <rect x="148" y="18" width="24" height="24" rx="4" fill="#1e293b" stroke="#334155" strokeWidth="1" />
-            <rect x="240" y="43" width="40" height="24" rx="4" fill="#1e293b" stroke="#334155" strokeWidth="1" />
-            <rect x="70" y="108" width="40" height="24" rx="4" fill="#1e293b" stroke="#334155" strokeWidth="1" />
-            <rect x="180" y="98" width="40" height="28" rx="4" fill="#1e293b" stroke="#2563eb" strokeWidth="1.5" />
-            <rect x="120" y="168" width="40" height="24" rx="4" fill="#1e293b" stroke="#334155" strokeWidth="1" />
-            <rect x="230" y="158" width="40" height="24" rx="4" fill="#1e293b" stroke="#334155" strokeWidth="1" />
+            <rect x="40" y="38" width="40" height="24" rx="4" fill="var(--color-diagram-fill)" stroke="var(--color-diagram-stroke)" strokeWidth="1" />
+            <rect x="148" y="18" width="24" height="24" rx="4" fill="var(--color-diagram-fill)" stroke="var(--color-diagram-stroke)" strokeWidth="1" />
+            <rect x="240" y="43" width="40" height="24" rx="4" fill="var(--color-diagram-fill)" stroke="var(--color-diagram-stroke)" strokeWidth="1" />
+            <rect x="70" y="108" width="40" height="24" rx="4" fill="var(--color-diagram-fill)" stroke="var(--color-diagram-stroke)" strokeWidth="1" />
+            <rect x="180" y="98" width="40" height="28" rx="4" fill="var(--color-diagram-fill)" stroke="#2563eb" strokeWidth="1.5" />
+            <rect x="120" y="168" width="40" height="24" rx="4" fill="var(--color-diagram-fill)" stroke="var(--color-diagram-stroke)" strokeWidth="1" />
+            <rect x="230" y="158" width="40" height="24" rx="4" fill="var(--color-diagram-fill)" stroke="var(--color-diagram-stroke)" strokeWidth="1" />
           </svg>
 
-          <div className="mt-3 rounded-lg bg-[#0d1117] px-3 py-2 font-mono text-[11px] text-[var(--color-muted-foreground)]">
+          <div className="mt-3 rounded-lg bg-[var(--color-code-bg)] px-3 py-2 font-mono text-[11px] text-[var(--color-muted-foreground)]">
             <span className="text-[var(--color-accent)]">SELECT</span> *{' '}
             <span className="text-[var(--color-accent)]">FROM</span> users{' '}
             <span className="text-[var(--color-accent)]">LIMIT</span> 100;
