@@ -7,7 +7,7 @@ export function Footer() {
         <div className="flex items-center gap-2.5">
           <img src="/icon.png" alt="" className="h-6 w-6 rounded-md opacity-80" />
           <span className="text-sm text-[var(--color-muted-foreground)]">
-            OpenRDB Atlas — home of{' '}
+            OpenRDB Atlas, home of{' '}
             <span className="text-[var(--color-foreground)]">OpenRDB Studio</span>
           </span>
         </div>
