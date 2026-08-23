@@ -2,8 +2,8 @@ import { ConnectionSidebar } from "@/components/connections/ConnectionSidebar"
 import { ConnectionModal } from "@/components/connections/ConnectionModal"
 import { CreateDatabaseModal } from "@/components/connections/CreateDatabaseModal"
 import { ConnectionEditForm } from "@/components/connections/ConnectionEditForm"
+import { AppLogo } from "@/components/AppLogo"
 import { useConnectionStore } from "@/stores/connectionStore"
-import { Database } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export function ConnectionsPage() {
@@ -17,7 +17,7 @@ export function ConnectionsPage() {
             <div className="flex-1 flex flex-col min-w-0">
                 <header className="h-14 border-b border-border flex items-center justify-between px-4 shrink-0">
                     <div className="flex items-center gap-2">
-                        <Database className="w-4 h-4 text-primary" />
+                        <AppLogo size="xs" />
                         <span className="text-sm font-semibold">OpenRDB Studio</span>
                         <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
                             v0.1.0
@@ -30,9 +30,7 @@ export function ConnectionsPage() {
                 ) : (
                     <main className="flex-1 flex items-center justify-center">
                         <div className="text-center max-w-md px-4">
-                            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
-                                <Database className="w-8 h-8 text-primary" />
-                            </div>
+                            <AppLogo size="lg" className="mx-auto mb-6" />
                             <h2 className="text-2xl font-semibold text-foreground mb-2">
                                 Welcome to OpenRDB Studio
                             </h2>
