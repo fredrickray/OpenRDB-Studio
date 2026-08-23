@@ -1,4 +1,5 @@
 import { Reveal } from '@/components/Reveal'
+import { AppLogo } from '@/components/AppLogo'
 import { GITHUB_RELEASES_URL } from '@/lib/content'
 import { ArrowDown, Download } from 'lucide-react'
 
@@ -74,7 +75,8 @@ function HeroVisual() {
           <span className="h-2.5 w-2.5 rounded-full bg-red-500/80" />
           <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/80" />
           <span className="h-2.5 w-2.5 rounded-full bg-green-500/80" />
-          <span className="ml-2 font-mono text-xs text-[var(--color-muted-foreground)]">
+          <AppLogo size="xs" className="ml-2" />
+          <span className="font-mono text-xs text-[var(--color-muted-foreground)]">
             OpenRDB Studio
           </span>
         </div>

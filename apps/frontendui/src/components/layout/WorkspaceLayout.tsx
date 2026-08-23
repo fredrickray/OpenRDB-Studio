@@ -1,11 +1,12 @@
 import type { ReactNode } from "react"
 import { WorkspaceSidebar } from "@/components/workspace/WorkspaceSidebar"
 import { StatusBar } from "@/components/workspace/StatusBar"
+import { AppLogo } from "@/components/AppLogo"
 import { useTableStore } from "@/stores/tableStore"
 import { useConnectionStore } from "@/stores/connectionStore"
 import { useWorkspaceUiStore } from "@/stores/workspaceUiStore"
 import { Button } from "@/components/ui/button"
-import { Database, RefreshCw, Table, Columns, Code, Eye } from "lucide-react"
+import { RefreshCw, Table, Columns, Code, Eye } from "lucide-react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
@@ -76,7 +77,7 @@ export function WorkspaceLayout({
                 <header className="h-10 border-b border-border flex items-center justify-between px-3 bg-card shrink-0">
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">
-                            <Database className="w-4 h-4 text-primary" />
+                            <AppLogo size="xs" />
                             <span className="text-sm font-semibold">OpenRDB Studio</span>
                         </div>
                         <nav className="flex items-center gap-1 text-sm">
