@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            asset: OpenRDB-Studio-macos-aarch64.dmg
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            asset: OpenRDB-Studio-macos-x64.dmg
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            asset: OpenRDB-Studio-linux-amd64.AppImage
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset: OpenRDB-Studio-windows-x64.exe
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/frontendui/package-lock.json
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/frontendui/src-tauri
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install frontend dependencies
+        working-directory: apps/frontendui
+        run: npm ci
+
+      - name: Build Tauri app
+        working-directory: apps/frontendui
+        run: npm run tauri:build -- --target ${{ matrix.target }}
+
+      - name: Prepare release asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAURI_DIR="apps/frontendui/src-tauri/target/${{ matrix.target }}/release/bundle"
+
+          if [[ "${{ matrix.platform }}" == macos-latest ]]; then
+            SRC=$(find "$TAURI_DIR/dmg" -name '*.dmg' | head -n 1)
+          elif [[ "${{ matrix.platform }}" == ubuntu-22.04 ]]; then
+            SRC=$(find "$TAURI_DIR/appimage" -name '*.AppImage' | head -n 1)
+          else
+            SRC=$(find "$TAURI_DIR/nsis" -name '*-setup.exe' | head -n 1)
+          fi
+
+          if [[ -z "${SRC:-}" || ! -f "$SRC" ]]; then
+            echo "Could not find bundle artifact in $TAURI_DIR"
+            find apps/frontendui/src-tauri/target -type f \( -name '*.dmg' -o -name '*.AppImage' -o -name '*-setup.exe' \)
+            exit 1
+          fi
+
+          cp "$SRC" "${{ matrix.asset }}"
+          echo "ASSET_PATH=${{ matrix.asset }}" >> "$GITHUB_ENV"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: OpenRDB Studio ${{ github.ref_name }}
+          generate_release_notes: true
+          draft: true
+          files: ${{ env.ASSET_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
