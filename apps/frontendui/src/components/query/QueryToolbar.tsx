@@ -4,7 +4,8 @@ import { useQueryStore } from "@/stores/queryStore"
 import { useToastStore } from "@/stores/toastStore"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { format } from "sql-formatter"
+import { formatSql } from '@/lib/formatSql'
+import { saveQueryLocally } from '@/lib/savedQueries'
 
 function escapeCsv(value: string | null): string {
     if (value == null) return ''
@@ -42,11 +43,7 @@ export function QueryToolbar() {
     const handleFormat = () => {
         if (!activeTabId || !activeTab?.sql.trim()) return
         try {
-            const formatted = format(activeTab.sql, {
-                language: 'postgresql',
-                tabWidth: 2,
-                keywordCase: 'upper',
-            })
+            const formatted = formatSql(activeTab.sql)
             updateSql(activeTabId, formatted)
             showToast('SQL formatted', 'success')
         } catch (error) {
@@ -60,21 +57,7 @@ export function QueryToolbar() {
     const handleSave = () => {
         if (!activeTab) return
         try {
-            const key = 'openrdb-saved-queries'
-            const existing = JSON.parse(localStorage.getItem(key) || '[]') as Array<{
-                id: string
-                name: string
-                sql: string
-                savedAt: string
-            }>
-            const entry = {
-                id: activeTab.id,
-                name: activeTab.name,
-                sql: activeTab.sql,
-                savedAt: new Date().toISOString(),
-            }
-            const next = [entry, ...existing.filter((e) => e.id !== activeTab.id)].slice(0, 50)
-            localStorage.setItem(key, JSON.stringify(next))
+            saveQueryLocally(activeTab)
             showToast(`Saved “${activeTab.name}” locally`, 'success')
         } catch {
             showToast('Failed to save query', 'error')

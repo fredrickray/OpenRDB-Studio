@@ -12,7 +12,8 @@ const MAX_WIDTH = 480
 
 export function ConnectionSidebar() {
     const { connections, openModal, isLoaded } = useConnectionStore()
-    const { connectionsSidebarWidth, setConnectionsSidebarWidth } = useWorkspaceUiStore()
+    const { connectionsSidebarWidth, connectionsSidebarCollapsed, setConnectionsSidebarWidth } =
+        useWorkspaceUiStore()
     const [searchQuery, setSearchQuery] = useState("")
     const isResizing = useRef(false)
 
@@ -65,6 +66,10 @@ export function ConnectionSidebar() {
         },
         [connectionsSidebarWidth, setConnectionsSidebarWidth]
     )
+
+    if (connectionsSidebarCollapsed) {
+        return null
+    }
 
     return (
         <div
