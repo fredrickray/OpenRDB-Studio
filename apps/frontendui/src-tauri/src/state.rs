@@ -1,9 +1,10 @@
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 use chrono::Utc;
 use crate::adapters::postgres::{ConnectionConfig, ConnectionInfo};
+use crate::bridge::AtlasConnectPayload;
 
 pub type PgPool = Pool<Postgres>;
 
@@ -13,6 +14,8 @@ pub struct AppState {
     pub connections: RwLock<HashMap<String, PgPool>>,
     /// Map of connection ID to info
     pub connection_info: RwLock<HashMap<String, ConnectionInfo>>,
+    /// Atlas → Studio connect requests waiting for the UI to consume
+    pub pending_atlas_connects: Mutex<Vec<AtlasConnectPayload>>,
 }
 
 impl AppState {
@@ -20,7 +23,16 @@ impl AppState {
         Self {
             connections: RwLock::new(HashMap::new()),
             connection_info: RwLock::new(HashMap::new()),
+            pending_atlas_connects: Mutex::new(Vec::new()),
         }
+    }
+
+    pub fn push_atlas_connect(&self, payload: AtlasConnectPayload) {
+        self.pending_atlas_connects.lock().unwrap().push(payload);
+    }
+
+    pub fn take_atlas_connects(&self) -> Vec<AtlasConnectPayload> {
+        std::mem::take(&mut *self.pending_atlas_connects.lock().unwrap())
     }
 
     /// Add a new connection and return its ID
