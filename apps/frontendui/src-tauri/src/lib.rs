@@ -36,6 +36,7 @@ pub fn run() {
             ipc::command::get_password,
             ipc::command::delete_password,
             ipc::command::list_foreign_keys,
+            ipc::command::take_pending_atlas_connects,
         ])
         .setup(|app| {
             menu::init_logging(app.handle())?;
