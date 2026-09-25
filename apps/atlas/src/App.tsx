@@ -1,19 +1,23 @@
-import { DownloadSection } from '@/components/DownloadSection'
-import { Features } from '@/components/Features'
-import { Footer } from '@/components/Footer'
-import { Hero } from '@/components/Hero'
-import { Nav } from '@/components/Nav'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { RequireSession } from '@/components/RequireSession'
+import { LandingPage } from '@/pages/LandingPage'
+import { SignInPage } from '@/pages/SignInPage'
+import { ProjectsPage } from '@/pages/ProjectsPage'
+import { ProjectFormPage } from '@/pages/ProjectFormPage'
 
 export function App() {
   return (
-    <>
-      <Nav />
-      <main>
-        <Hero />
-        <Features />
-        <DownloadSection />
-      </main>
-      <Footer />
-    </>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/sign-in" element={<SignInPage />} />
+        <Route element={<RequireSession />}>
+          <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/projects/new" element={<ProjectFormPage />} />
+          <Route path="/projects/:id/edit" element={<ProjectFormPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   )
 }

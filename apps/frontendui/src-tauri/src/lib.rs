@@ -5,10 +5,14 @@ mod state;
 
 use state::AppState;
 
+#[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
+use tauri_plugin_deep_link::DeepLinkExt;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_deep_link::init())
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             ipc::command::ping,
@@ -35,6 +39,15 @@ pub fn run() {
         .setup(|app| {
             menu::init_logging(app.handle())?;
             menu::build_app_menu(app.handle())?;
+
+            // Register schemes in dev on Linux/Windows (macOS needs a bundled app).
+            #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
+            {
+                if let Err(e) = app.deep_link().register_all() {
+                    log::warn!("Failed to register deep links: {e}");
+                }
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())

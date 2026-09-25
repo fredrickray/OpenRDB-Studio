@@ -23,10 +23,16 @@ export function Footer() {
             Source code
           </a>
           <a
-            href="#download"
+            href="/#download"
             className="transition-colors hover:text-[var(--color-foreground)]"
           >
             Download
+          </a>
+          <a
+            href="/projects"
+            className="transition-colors hover:text-[var(--color-foreground)]"
+          >
+            Projects
           </a>
         </div>
       </div>

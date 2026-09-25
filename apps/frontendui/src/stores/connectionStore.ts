@@ -55,6 +55,16 @@ interface ConnectionStore {
     isLoaded: boolean
 
     addConnection: (conn: Omit<Connection, 'id' | 'status'> & { status?: Connection['status'] }) => string
+    /** Import or update a connection from an Atlas deep link (idempotent by host/port/user/db). */
+    upsertAtlasConnection: (payload: {
+        name: string
+        host: string
+        port: number
+        username: string
+        password: string
+        database: string
+        sslRequired: boolean
+    }) => string
     updateConnection: (id: string, conn: Partial<Connection>) => void
     deleteConnection: (id: string) => void
     setActiveConnection: (id: string | null) => void
@@ -197,6 +207,41 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
             persistToDisk(connections)
             return { connections }
         })
+        return id
+    },
+
+    upsertAtlasConnection: (payload) => {
+        const existing = get().connections.find(
+            (c) =>
+                c.host === payload.host &&
+                c.port === payload.port &&
+                c.username === payload.username &&
+                c.database === payload.database
+        )
+
+        if (existing) {
+            get().updateConnection(existing.id, {
+                name: payload.name || existing.name,
+                password: payload.password,
+                sslRequired: payload.sslRequired,
+            })
+            get().setActiveConnection(existing.id)
+            return existing.id
+        }
+
+        const id = get().addConnection({
+            name: payload.name,
+            host: payload.host,
+            port: payload.port,
+            username: payload.username,
+            password: payload.password,
+            database: payload.database,
+            sslRequired: payload.sslRequired,
+            readOnly: false,
+            color: 'blue',
+            favorite: false,
+        })
+        get().setActiveConnection(id)
         return id
     },
 

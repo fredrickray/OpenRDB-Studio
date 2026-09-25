@@ -4,9 +4,11 @@ import { QueryEditorPage } from '@/pages/QueryEditorPage'
 import { TableWorkspacePage } from '@/pages/TableWorkspacePage'
 import { ErdViewPage } from '@/pages/ErdViewPage'
 import { useMenuActions } from '@/hooks/useMenuActions'
+import { useAtlasDeepLink } from '@/hooks/useAtlasDeepLink'
 
 function AppRoutes() {
   useMenuActions()
+  useAtlasDeepLink()
 
   return (
     <Routes>
