@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { AppLogo } from '@/components/AppLogo'
 import { clearSession, getSession } from '@/lib/session'
+import { deleteNeonProvision } from '@/lib/atlasApi'
 import {
   buildOpenInStudioUrl,
   deleteProject,
@@ -43,6 +44,7 @@ function ProjectCard({
 }) {
   const [copied, setCopied] = useState(false)
   const [showFallback, setShowFallback] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const openStudio = () => {
     const url = buildOpenInStudioUrl(project)
@@ -60,10 +62,27 @@ function ProjectCard({
     }
   }
 
-  const remove = () => {
-    if (!confirm(`Delete project “${project.name}”?`)) return
-    deleteProject(project.id)
-    onDeleted()
+  const remove = async () => {
+    if (!confirm(`Delete project “${project.name}” from Atlas?`)) return
+
+    const deleteNeonCloud =
+      Boolean(project.source === 'neon' && project.neonProjectId) &&
+      confirm('Also delete the Neon cloud database? This cannot be undone.')
+
+    setDeleting(true)
+    try {
+      if (deleteNeonCloud && project.neonProjectId) {
+        try {
+          await deleteNeonProvision(project.neonProjectId)
+        } catch (err) {
+          alert(err instanceof Error ? err.message : 'Could not delete Neon project')
+        }
+      }
+      deleteProject(project.id)
+      onDeleted()
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -73,6 +92,11 @@ function ProjectCard({
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-base font-semibold">{project.name}</h2>
             <EnvBadge environment={project.environment} />
+            {project.source === 'neon' && (
+              <span className="rounded-md bg-[var(--color-primary)]/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-accent)]">
+                Neon
+              </span>
+            )}
           </div>
           <p className="mt-1 font-mono text-xs text-[var(--color-muted-foreground)]">
             {project.username}@{project.host}:{project.port}/{project.database}
@@ -94,6 +118,7 @@ function ProjectCard({
             className="rounded-lg p-2 text-[var(--color-muted-foreground)] transition hover:bg-[var(--color-background)] hover:text-red-400"
             title="Delete"
             aria-label="Delete project"
+            disabled={deleting}
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -173,7 +198,7 @@ export function ProjectsPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
             <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
-              Paste Postgres connection strings and open them in Studio. Staging and production stay labeled here.
+              Create a Postgres database on Neon, or paste a connection string. Open projects in Studio when you are ready.
             </p>
           </div>
           <Link
