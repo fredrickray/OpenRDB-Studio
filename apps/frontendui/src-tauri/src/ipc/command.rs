@@ -722,3 +722,11 @@ pub async fn list_foreign_keys(
         })
         .collect())
 }
+
+/// Drain Atlas connect payloads queued by the localhost bridge.
+#[command]
+pub fn take_pending_atlas_connects(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::bridge::AtlasConnectPayload>, String> {
+    Ok(state.take_atlas_connects())
+}

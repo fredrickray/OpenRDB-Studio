@@ -40,6 +40,32 @@ fn http_response(status: &str, body: &str, extra_headers: &str) -> String {
     )
 }
 
+fn extract_body(request: &str) -> String {
+    let Some((_, after_headers)) = request.split_once("\r\n\r\n") else {
+        return String::new();
+    };
+    let content_length = request
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            if name.eq_ignore_ascii_case("content-length") {
+                value.trim().parse::<usize>().ok()
+            } else {
+                None
+            }
+        })
+        .unwrap_or(after_headers.len());
+
+    after_headers
+        .as_bytes()
+        .get(..content_length.min(after_headers.len()))
+        .and_then(|b| std::str::from_utf8(b).ok())
+        .unwrap_or(after_headers)
+        .trim_end_matches('\0')
+        .trim()
+        .to_string()
+}
+
 async fn handle_connection<R: Runtime>(
     mut stream: tokio::net::TcpStream,
     app: AppHandle<R>,
@@ -53,7 +79,7 @@ async fn handle_connection<R: Runtime>(
     };
 
     let request = String::from_utf8_lossy(&buf[..n]);
-    let (request_line, rest) = match request.split_once("\r\n") {
+    let (request_line, _) = match request.split_once("\r\n") {
         Some(parts) => parts,
         None => return,
     };
@@ -67,53 +93,33 @@ async fn handle_connection<R: Runtime>(
     } else if method == "GET" && path.starts_with("/health") {
         http_response("200 OK", r#"{"ok":true,"service":"openrdb-studio"}"#, "")
     } else if method == "POST" && path.starts_with("/connect") {
-        let body = rest
-            .rsplit_once("\r\n\r\n")
-            .map(|(_, b)| b)
-            .unwrap_or("")
-            .trim_end_matches('\0')
-            .trim();
+        let body = extract_body(&request);
 
-        match serde_json::from_str::<AtlasConnectPayload>(body) {
+        match serde_json::from_str::<AtlasConnectPayload>(&body) {
             Ok(payload) if !payload.host.is_empty() && !payload.username.is_empty() => {
-                // Frontend also accepts snake_case via normalize; emit camelCase-friendly JSON.
-                #[derive(Serialize)]
-                #[serde(rename_all = "camelCase")]
-                struct EmitPayload<'a> {
-                    name: &'a str,
-                    host: &'a str,
-                    port: u16,
-                    username: &'a str,
-                    password: &'a str,
-                    database: &'a str,
-                    ssl_required: bool,
+                log::info!(
+                    "Atlas connect received: {} @ {}:{} / {}",
+                    payload.name,
+                    payload.host,
+                    payload.port,
+                    payload.database
+                );
+
+                if let Some(state) = app.try_state::<crate::state::AppState>() {
+                    state.push_atlas_connect(payload.clone());
                 }
 
-                let emit_payload = EmitPayload {
-                    name: &payload.name,
-                    host: &payload.host,
-                    port: payload.port,
-                    username: &payload.username,
-                    password: &payload.password,
-                    database: &payload.database,
-                    ssl_required: payload.ssl_required,
-                };
-
-                if let Err(e) = app.emit("atlas-connect", &emit_payload) {
+                if let Err(e) = app.emit("atlas-connect", &payload) {
                     log::error!("Failed to emit atlas-connect: {e}");
-                    http_response(
-                        "500 Internal Server Error",
-                        r#"{"ok":false,"error":"emit failed"}"#,
-                        "",
-                    )
-                } else {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                        let _ = window.unminimize();
-                    }
-                    http_response("200 OK", r#"{"ok":true}"#, "")
                 }
+
+                for (_, window) in app.webview_windows() {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                    let _ = window.unminimize();
+                }
+
+                http_response("200 OK", r#"{"ok":true}"#, "")
             }
             Ok(_) => http_response(
                 "400 Bad Request",
@@ -121,10 +127,10 @@ async fn handle_connection<R: Runtime>(
                 "",
             ),
             Err(e) => {
-                log::warn!("Invalid connect payload: {e}");
+                log::warn!("Invalid connect payload: {e}; body={body}");
                 http_response(
                     "400 Bad Request",
-                    &format!(r#"{{"ok":false,"error":"invalid json"}}"#),
+                    r#"{"ok":false,"error":"invalid json"}"#,
                     "",
                 )
             }
