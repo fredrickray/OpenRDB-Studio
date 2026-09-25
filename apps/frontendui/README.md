@@ -43,6 +43,19 @@ npm run tauri build
 - Structure view for columns / keys
 - SQL editor with Format, Export CSV, auto-limit, multi-tabs
 - ERD view with real foreign-key relationships
+- **Atlas deep links** (`openrdb://connect?...`) to import connections from the Atlas projects dashboard
+
+## Atlas deep links
+
+Atlas can open Studio with a connection prefilled:
+
+```
+openrdb://connect?host=...&port=5432&user=...&password=...&database=...&ssl=1&name=...
+```
+
+- Requires the Tauri app (`npm run tauri:dev` or an installed build), not the browser-only Vite preview.
+- On macOS, custom URL schemes are registered for **bundled/installed** apps; use a release build or install the `.app` to test from the browser.
+- On Linux/Windows, schemes register at runtime in debug builds.
 
 ## Project layout
 

@@ -1,7 +1,8 @@
+import { Link } from 'react-router-dom'
 import { Reveal } from '@/components/Reveal'
 import { AppLogo } from '@/components/AppLogo'
 import { GITHUB_RELEASES_URL } from '@/lib/content'
-import { ArrowDown, Download } from 'lucide-react'
+import { ArrowDown, Download, LayoutGrid } from 'lucide-react'
 
 export function Hero() {
   return (
@@ -30,8 +31,8 @@ export function Hero() {
 
             <Reveal delay={2}>
               <p className="mt-5 max-w-lg text-base leading-relaxed text-[var(--color-muted-foreground)] sm:text-lg">
-                A fast, native PostgreSQL workspace built with Tauri and Rust. Connect,
-                query, browse, and visualize in one desktop app.
+                A fast, native PostgreSQL workspace built with Tauri and Rust. Organize
+                staging and production projects in Atlas, then open them in Studio.
               </p>
             </Reveal>
 
@@ -46,9 +47,16 @@ export function Hero() {
                   <Download className="h-4 w-4" />
                   Download Studio
                 </a>
+                <Link
+                  to="/sign-in"
+                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-card-border)] bg-[var(--color-card)] px-5 py-3 text-sm font-medium text-[var(--color-foreground)] transition-colors hover:border-[var(--color-primary)]/40"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                  Manage projects
+                </Link>
                 <a
                   href="#features"
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-card-border)] bg-[var(--color-card)] px-5 py-3 text-sm font-medium text-[var(--color-foreground)] transition-colors hover:border-[var(--color-primary)]/40"
+                  className="inline-flex items-center gap-2 rounded-xl px-3 py-3 text-sm font-medium text-[var(--color-muted-foreground)] transition-colors hover:text-[var(--color-foreground)]"
                 >
                   See features
                   <ArrowDown className="h-4 w-4" />

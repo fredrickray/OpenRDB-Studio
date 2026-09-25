@@ -8,6 +8,7 @@
   "permissions": [
     "core:default",
     "opener:allow-default-urls",
-    "opener:allow-reveal-item-in-dir"
+    "opener:allow-reveal-item-in-dir",
+    "deep-link:default"
   ]
 }
