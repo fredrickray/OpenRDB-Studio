@@ -22,6 +22,10 @@ export interface Project {
   username: string
   password: string
   ssl: boolean
+  /** How the connection was added */
+  source: 'paste' | 'neon'
+  neonProjectId?: string
+  neonBranchId?: string
   createdAt: string
   updatedAt: string
 }
@@ -86,7 +90,11 @@ function readAll(): Project[] {
     const raw = localStorage.getItem(PROJECTS_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw) as Project[]
-    return Array.isArray(parsed) ? parsed : []
+    if (!Array.isArray(parsed)) return []
+    return parsed.map((p) => ({
+      ...p,
+      source: p.source || 'paste',
+    }))
   } catch {
     return []
   }
@@ -110,6 +118,9 @@ export function createProject(input: {
   name: string
   environment: ProjectEnvironment
   connectionString: string
+  source?: 'paste' | 'neon'
+  neonProjectId?: string
+  neonBranchId?: string
 }): Project {
   const parsed = parsePostgresUrl(input.connectionString)
   if (!parsed.ok) {
@@ -123,6 +134,9 @@ export function createProject(input: {
     environment: input.environment,
     connectionString: input.connectionString.trim(),
     ...parsed.value,
+    source: input.source || 'paste',
+    neonProjectId: input.neonProjectId,
+    neonBranchId: input.neonBranchId,
     createdAt: now,
     updatedAt: now,
   }

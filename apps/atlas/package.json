@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:api": "npm run dev --prefix ../atlas-api",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },
