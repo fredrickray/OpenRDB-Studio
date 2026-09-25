@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Copy,
   ExternalLink,
@@ -7,18 +7,18 @@ import {
   Plus,
   Trash2,
   Download,
+  Loader2,
 } from 'lucide-react'
 import { AppLogo } from '@/components/AppLogo'
 import { clearSession, getSession } from '@/lib/session'
 import { deleteNeonProvision } from '@/lib/atlasApi'
+import { openInStudio } from '@/lib/openInStudio'
 import {
-  buildOpenInStudioUrl,
   deleteProject,
   listProjects,
   type Project,
   type ProjectEnvironment,
 } from '@/lib/projects'
-import { useNavigate } from 'react-router-dom'
 
 function EnvBadge({ environment }: { environment: ProjectEnvironment }) {
   const isProd = environment === 'production'
@@ -43,13 +43,27 @@ function ProjectCard({
   onDeleted: () => void
 }) {
   const [copied, setCopied] = useState(false)
-  const [showFallback, setShowFallback] = useState(false)
+  const [statusMsg, setStatusMsg] = useState<string | null>(null)
+  const [opening, setOpening] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  const openStudio = () => {
-    const url = buildOpenInStudioUrl(project)
-    window.location.href = url
-    setShowFallback(true)
+  const handleOpenStudio = async () => {
+    setOpening(true)
+    setStatusMsg(null)
+    try {
+      const result = await openInStudio(project)
+      if (result === 'bridge') {
+        setStatusMsg('Opened in Studio. Check the desktop app.')
+      } else if (result === 'deeplink') {
+        setStatusMsg(
+          'Tried the openrdb:// link. If nothing happened, start Studio with npm run tauri:dev and click again.'
+        )
+      } else {
+        setStatusMsg('Could not reach Studio. Start it, then try again.')
+      }
+    } finally {
+      setOpening(false)
+    }
   }
 
   const copyConn = async () => {
@@ -128,10 +142,15 @@ function ProjectCard({
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={openStudio}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-primary)] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[var(--color-primary-hover)]"
+          onClick={handleOpenStudio}
+          disabled={opening}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-primary)] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[var(--color-primary-hover)] disabled:opacity-60"
         >
-          <ExternalLink className="h-3.5 w-3.5" />
+          {opening ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <ExternalLink className="h-3.5 w-3.5" />
+          )}
           Open in Studio
         </button>
         <button
@@ -144,13 +163,12 @@ function ProjectCard({
         </button>
       </div>
 
-      {showFallback && (
+      {statusMsg && (
         <p className="mt-3 text-xs text-[var(--color-muted-foreground)]">
-          If Studio did not open,{' '}
+          {statusMsg}{' '}
           <Link to="/#download" className="text-[var(--color-primary)] hover:underline">
-            download it
-          </Link>{' '}
-          and try again. Deep links need the desktop app installed.
+            Download Studio
+          </Link>
         </p>
       )}
     </article>

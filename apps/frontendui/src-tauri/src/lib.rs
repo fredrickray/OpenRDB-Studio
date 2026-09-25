@@ -1,4 +1,5 @@
 mod adapters;
+mod bridge;
 mod ipc;
 mod menu;
 mod state;
@@ -39,6 +40,7 @@ pub fn run() {
         .setup(|app| {
             menu::init_logging(app.handle())?;
             menu::build_app_menu(app.handle())?;
+            bridge::start_bridge(app.handle().clone());
 
             // Register schemes in dev on Linux/Windows (macOS needs a bundled app).
             #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
