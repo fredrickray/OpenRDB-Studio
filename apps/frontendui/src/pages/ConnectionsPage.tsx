@@ -20,7 +20,7 @@ export function ConnectionsPage() {
                         <AppLogo size="xs" />
                         <span className="text-sm font-semibold">OpenRDB Studio</span>
                         <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                            v0.1.0
+                            v1.0.0
                         </span>
                     </div>
                 </header>

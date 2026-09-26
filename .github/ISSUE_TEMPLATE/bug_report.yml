@@ -22,8 +22,8 @@ body:
     id: version
     attributes:
       label: OpenRDB Studio version
-      description: e.g. v0.1.0 from Help → About or the releases page
-      placeholder: v0.1.0
+      description: e.g. v1.0.0 from Help → About or the releases page
+      placeholder: v1.0.0
     validations:
       required: true
   - type: textarea
