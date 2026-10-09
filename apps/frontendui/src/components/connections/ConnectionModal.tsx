@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useConnectionStore, type ConnectionColor } from "@/stores/connectionStore"
+import { DATABASE_ENGINES, engineDefaults, normalizeEngine, type DatabaseEngine } from "@/lib/engines"
 import { useTableStore } from "@/stores/tableStore"
 import {
     Dialog,
@@ -16,7 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { AlertCircle, Loader2, Trash2, AlertTriangle } from "lucide-react"
-import { buildPostgresUri, parsePostgresUri } from "@/lib/pgUri"
+import { buildConnectionUri, parseConnectionUri } from "@/lib/pgUri"
 import { api } from "@/lib/api"
 
 const COLORS: { value: ConnectionColor; label: string; className: string }[] = [
@@ -44,6 +45,8 @@ export function ConnectionModal() {
     const setActiveTableConnection = useTableStore((s) => s.setActiveConnection)
     const navigate = useNavigate()
 
+    const postgresDefaults = engineDefaults("postgres")
+    const [engine, setEngine] = useState<DatabaseEngine>("postgres")
     const [editUri, setEditUri] = useState(true)
     const [uri, setUri] = useState("postgresql://postgres@localhost:5432/")
     const [name, setName] = useState("")
@@ -53,8 +56,8 @@ export function ConnectionModal() {
     const [readOnly, setReadOnly] = useState(false)
     const [password, setPassword] = useState("")
     const [host, setHost] = useState("localhost")
-    const [port, setPort] = useState(5432)
-    const [username, setUsername] = useState("postgres")
+    const [port, setPort] = useState(postgresDefaults.port)
+    const [username, setUsername] = useState(postgresDefaults.username)
     const [database, setDatabase] = useState("")
 
     const [isSaving, setIsSaving] = useState(false)
@@ -72,6 +75,7 @@ export function ConnectionModal() {
         setIsConnecting(false)
 
         if (editingConnection) {
+            setEngine(normalizeEngine(editingConnection.engine))
             setName(editingConnection.name)
             setHost(editingConnection.host)
             setPort(editingConnection.port)
@@ -83,7 +87,7 @@ export function ConnectionModal() {
             setColor(editingConnection.color === "blue" && !editingConnection.favorite ? editingConnection.color : editingConnection.color)
             setFavorite(editingConnection.favorite)
             setUri(
-                buildPostgresUri({
+                buildConnectionUri(normalizeEngine(editingConnection.engine), {
                     host: editingConnection.host,
                     port: editingConnection.port,
                     username: editingConnection.username,
@@ -94,10 +98,11 @@ export function ConnectionModal() {
             )
             setEditUri(true)
         } else {
+            setEngine("postgres")
             setName("")
             setHost("localhost")
-            setPort(5432)
-            setUsername("postgres")
+            setPort(postgresDefaults.port)
+            setUsername(postgresDefaults.username)
             setPassword("")
             setDatabase("")
             setSslRequired(false)
@@ -113,7 +118,7 @@ export function ConnectionModal() {
     useEffect(() => {
         if (editUri) return
         setUri(
-            buildPostgresUri({
+            buildConnectionUri(engine, {
                 host,
                 port,
                 username,
@@ -122,16 +127,17 @@ export function ConnectionModal() {
                 sslRequired,
             })
         )
-    }, [editUri, host, port, username, password, database, sslRequired])
+    }, [editUri, engine, host, port, username, password, database, sslRequired])
 
     const applyUriToFields = (value: string) => {
         setUri(value)
-        const parsed = parsePostgresUri(value)
+        const parsed = parseConnectionUri(value)
         if (!parsed) {
             setUriError("Invalid connection URI")
             return
         }
         setUriError(null)
+        setEngine(parsed.engine)
         setHost(parsed.host)
         setPort(parsed.port)
         setUsername(parsed.username)
@@ -142,13 +148,14 @@ export function ConnectionModal() {
 
     const resolveFields = () => {
         if (editUri) {
-            const parsed = parsePostgresUri(uri)
+            const parsed = parseConnectionUri(uri)
             if (!parsed) {
                 setUriError("Invalid connection URI")
                 return null
             }
             setUriError(null)
             return {
+                engine: parsed.engine,
                 host: parsed.host,
                 port: parsed.port,
                 username: parsed.username,
@@ -157,7 +164,29 @@ export function ConnectionModal() {
                 sslRequired: parsed.sslRequired,
             }
         }
-        return { host, port, username, password, database, sslRequired }
+        return { engine, host, port, username, password, database, sslRequired }
+    }
+
+    const handleEngineChange = (next: DatabaseEngine) => {
+        const previous = engineDefaults(engine)
+        const nextDefaults = engineDefaults(next)
+        const nextPort = port === previous.port ? nextDefaults.port : port
+        const nextUser = username === previous.username ? nextDefaults.username : username
+        setEngine(next)
+        setPort(nextPort)
+        setUsername(nextUser)
+        if (editUri) {
+            setUri(
+                buildConnectionUri(next, {
+                    host,
+                    port: nextPort,
+                    username: nextUser,
+                    password,
+                    database,
+                    sslRequired,
+                })
+            )
+        }
     }
 
     const payload = useMemo(
@@ -168,12 +197,13 @@ export function ConnectionModal() {
             username,
             password,
             database,
+            engine,
             sslRequired,
             readOnly,
             color: color === "none" ? ("blue" as ConnectionColor) : color,
             favorite,
         }),
-        [name, host, port, username, password, database, sslRequired, readOnly, color, favorite]
+        [name, host, port, username, password, database, engine, sslRequired, readOnly, color, favorite]
     )
 
     const saveConnection = (): string => {
@@ -229,8 +259,9 @@ export function ConnectionModal() {
                 port: fields.port,
                 username: fields.username,
                 password: fields.password,
-                database: fields.database || "postgres",
+                database: fields.database || engineDefaults(fields.engine).database,
                 ssl_required: fields.sslRequired,
+                engine: fields.engine,
             })
             if (!test.success) {
                 throw new Error(test.message)
@@ -281,6 +312,22 @@ export function ConnectionModal() {
                     </DialogHeader>
 
                     <div className="space-y-5 py-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="conn-engine">Type</Label>
+                            <select
+                                id="conn-engine"
+                                className="w-full h-9 rounded-md border border-input bg-input px-2 text-sm"
+                                value={engine}
+                                onChange={(e) => handleEngineChange(normalizeEngine(e.target.value))}
+                            >
+                                {DATABASE_ENGINES.map((item) => (
+                                    <option key={item.id} value={item.id}>
+                                        {item.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
                         <div className="flex items-center justify-between gap-3">
                             <Label htmlFor="edit-uri" className="text-sm">
                                 Edit Connection String
@@ -301,7 +348,11 @@ export function ConnectionModal() {
                                     onChange={(e) => applyUriToFields(e.target.value)}
                                     rows={3}
                                     className="w-full rounded-md border border-input bg-input px-3 py-2 text-sm font-mono resize-y min-h-[72px]"
-                                    placeholder="postgresql://user:password@localhost:5432/mydb"
+                                    placeholder={
+                                        engine === "mysql"
+                                            ? "mysql://user:password@localhost:3306/mydb"
+                                            : "postgresql://user:password@localhost:5432/mydb"
+                                    }
                                 />
                                 {uriError && (
                                     <p className="text-xs text-destructive">{uriError}</p>
@@ -318,7 +369,9 @@ export function ConnectionModal() {
                                     <Input
                                         type="number"
                                         value={port}
-                                        onChange={(e) => setPort(parseInt(e.target.value) || 5432)}
+                                        onChange={(e) =>
+                                            setPort(parseInt(e.target.value) || engineDefaults(engine).port)
+                                        }
                                     />
                                 </div>
                                 <div className="space-y-2">

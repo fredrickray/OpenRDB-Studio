@@ -1,3 +1,5 @@
+import type { DatabaseEngine } from '@/lib/engines'
+
 // Types matching Rust backend
 export interface ConnectionConfig {
     host: string
@@ -6,6 +8,8 @@ export interface ConnectionConfig {
     password: string
     database: string
     ssl_required: boolean
+    /** Omitted values are treated as PostgreSQL by the backend. */
+    engine?: DatabaseEngine
 }
 
 export interface ConnectionTestResult {
