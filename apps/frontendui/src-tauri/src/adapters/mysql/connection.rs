@@ -2,6 +2,7 @@ use sqlx::{mysql::MySqlPoolOptions, MySql, Pool};
 use std::time::Duration;
 
 use crate::adapters::models::ConnectionConfig;
+use crate::adapters::userinfo::{encode_userinfo, redact_secret};
 
 pub type MySqlPool = Pool<MySql>;
 
@@ -36,24 +37,17 @@ pub fn connection_string(config: &ConnectionConfig) -> String {
     )
 }
 
-pub async fn create_pool(database_url: &str) -> Result<MySqlPool, String> {
+pub async fn create_pool(config: &ConnectionConfig) -> Result<MySqlPool, String> {
+    let database_url = connection_string(config);
     MySqlPoolOptions::new()
         .max_connections(5)
         .acquire_timeout(Duration::from_secs(5))
-        .connect(database_url)
+        .connect(&database_url)
         .await
-        .map_err(|e| format!("Failed to connect to MySQL: {}", e))
-}
-
-fn encode_userinfo(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(byte as char);
-            }
-            _ => out.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    out
+        .map_err(|e| {
+            redact_secret(
+                &format!("Failed to connect to MySQL: {}", e),
+                &config.password,
+            )
+        })
 }
