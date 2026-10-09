@@ -1,124 +1,29 @@
-use tauri::{command, State, AppHandle, Manager};
-use crate::state::AppState;
-use crate::adapters::postgres::{
-    ConnectionConfig, ConnectionTestResult, ConnectionInfo, 
-    TableInfo, QueryResult, DatabaseInfo, ColumnInfo, ForeignKeyInfo, create_pool, 
-    list_tables as db_list_tables, execute_query as db_execute_query
+use tauri::{command, AppHandle, Manager, State};
+use crate::adapters::{
+    connect_session, create_database as db_create_database, list_databases as db_list_databases,
+    test_connection as db_test_connection, ColumnInfo, ConnectionConfig, ConnectionInfo,
+    ConnectionTestResult, DatabaseInfo, ForeignKeyInfo, QueryResult, TableDataResult, TableInfo,
 };
-use sqlx::Row;
+use crate::state::AppState;
 use std::fs;
 use std::path::PathBuf;
 
-/// Test a PostgreSQL connection without storing it
+/// Test a connection without storing it. The adapter is chosen from `config.engine`.
 #[command]
 pub async fn test_connection(config: ConnectionConfig) -> Result<ConnectionTestResult, String> {
-    let connection_string = config.to_connection_string();
-    let expected_db = config.database.clone();
-    
-    match create_pool(&connection_string).await {
-        Ok(pool) => {
-            // Verify we can query and that we're connected to the expected database
-            // This ensures the database exists and we have access
-            match sqlx::query("SELECT current_database(), version()")
-                .fetch_one(&pool)
-                .await {
-                Ok(row) => {
-                    let current_db: String = row.try_get(0).unwrap_or_default();
-                    let version: Option<String> = row.try_get(1).ok();
-                    
-                    // Verify we're connected to the expected database
-                    if current_db.to_lowercase() != expected_db.to_lowercase() {
-                        return Ok(ConnectionTestResult {
-                            success: false,
-                            message: format!("Connected to '{}' but expected '{}'", current_db, expected_db),
-                            server_version: version,
-                        });
-                    }
-                    
-                    Ok(ConnectionTestResult {
-                        success: true,
-                        message: format!("Connection to '{}' successful", current_db),
-                        server_version: version,
-                    })
-                }
-                Err(e) => Ok(ConnectionTestResult {
-                    success: false,
-                    message: format!("Database query failed: {}", e),
-                    server_version: None,
-                }),
-            }
-        }
-        Err(e) => Ok(ConnectionTestResult {
-            success: false,
-            message: e,
-            server_version: None,
-        }),
-    }
+    db_test_connection(&config).await
 }
 
-/// List all available databases (connects to postgres database)
+/// List databases on the server. The adapter picks its own maintenance database.
 #[command]
 pub async fn list_databases(config: ConnectionConfig) -> Result<Vec<DatabaseInfo>, String> {
-    // Connect to 'postgres' database to list all databases
-    let mut config_for_listing = config.clone();
-    config_for_listing.database = "postgres".to_string();
-    
-    let connection_string = config_for_listing.to_connection_string();
-    let pool = create_pool(&connection_string).await?;
-    
-    let rows = sqlx::query(
-        r#"
-        SELECT 
-            datname as name,
-            pg_size_pretty(pg_database_size(datname)) as size,
-            pg_catalog.pg_get_userbyid(datdba) as owner
-        FROM pg_database
-        WHERE datistemplate = false
-        ORDER BY datname
-        "#
-    )
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| format!("Failed to list databases: {}", e))?;
-
-    Ok(rows
-        .into_iter()
-        .map(|row| DatabaseInfo {
-            name: row.try_get("name").unwrap_or_default(),
-            size: row.try_get("size").ok(),
-            owner: row.try_get("owner").ok(),
-        })
-        .collect())
+    db_list_databases(&config).await
 }
 
-/// Create a new database on the server (connects via postgres maintenance DB)
+/// Create a database on the server.
 #[command]
-pub async fn create_database(
-    config: ConnectionConfig,
-    name: String,
-) -> Result<bool, String> {
-    let trimmed = name.trim();
-    if trimmed.is_empty() {
-        return Err("Database name is required".to_string());
-    }
-    // Basic identifier validation — quoted identifiers allow most chars but block injection
-    if trimmed.contains('"') || trimmed.contains('\0') || trimmed.contains(';') {
-        return Err("Database name contains invalid characters".to_string());
-    }
-
-    let mut config_for_create = config.clone();
-    config_for_create.database = "postgres".to_string();
-
-    let connection_string = config_for_create.to_connection_string();
-    let pool = create_pool(&connection_string).await?;
-
-    let query = format!("CREATE DATABASE \"{}\"", trimmed.replace('"', "\"\""));
-    sqlx::query(&query)
-        .execute(&pool)
-        .await
-        .map_err(|e| format!("Failed to create database: {}", e))?;
-
-    Ok(true)
+pub async fn create_database(config: ConnectionConfig, name: String) -> Result<bool, String> {
+    db_create_database(&config, &name).await
 }
 
 /// Establish a connection and store it in app state
@@ -127,24 +32,17 @@ pub async fn connect(
     config: ConnectionConfig,
     state: State<'_, AppState>,
 ) -> Result<ConnectionInfo, String> {
-    let connection_string = config.to_connection_string();
-    let pool = create_pool(&connection_string).await?;
-    
-    // Verify connection works by running a simple query
-    sqlx::query("SELECT 1")
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| format!("Failed to verify connection: {}", e))?;
-    
-    let id = state.add_connection(pool, &config);
-    
-    let info = state.connection_info
+    let session = connect_session(&config).await?;
+    let id = state.add_connection(session, &config);
+
+    let info = state
+        .connection_info
         .read()
         .unwrap()
         .get(&id)
         .cloned()
         .ok_or("Failed to retrieve connection info")?;
-    
+
     Ok(info)
 }
 
@@ -169,11 +67,11 @@ pub async fn list_tables(
     connection_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TableInfo>, String> {
-    let pool = state
+    let session = state
         .get_connection(&connection_id)
         .ok_or("Connection not found")?;
-    
-    db_list_tables(&pool).await
+
+    session.list_tables().await
 }
 
 /// Execute a SQL query
@@ -183,11 +81,11 @@ pub async fn execute_query(
     sql: String,
     state: State<'_, AppState>,
 ) -> Result<QueryResult, String> {
-    let pool = state
+    let session = state
         .get_connection(&connection_id)
         .ok_or("Connection not found")?;
-    
-    db_execute_query(&pool, &sql).await
+
+    session.execute_query(&sql).await
 }
 
 /// Simple ping command for testing
@@ -204,72 +102,11 @@ pub async fn list_columns(
     table: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<ColumnInfo>, String> {
-    let pool = state
+    let session = state
         .get_connection(&connection_id)
         .ok_or("Connection not found")?;
-    
-    let rows = sqlx::query(
-        r#"
-        SELECT 
-            c.column_name,
-            c.data_type,
-            c.is_nullable,
-            c.column_default,
-            CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END as is_primary_key,
-            CASE WHEN fk.column_name IS NOT NULL THEN true ELSE false END as is_foreign_key
-        FROM information_schema.columns c
-        LEFT JOIN (
-            SELECT ku.column_name
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage ku
-                ON tc.constraint_name = ku.constraint_name
-            WHERE tc.table_schema = $1 
-                AND tc.table_name = $2 
-                AND tc.constraint_type = 'PRIMARY KEY'
-        ) pk ON c.column_name = pk.column_name
-        LEFT JOIN (
-            SELECT ku.column_name
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage ku
-                ON tc.constraint_name = ku.constraint_name
-            WHERE tc.table_schema = $1 
-                AND tc.table_name = $2 
-                AND tc.constraint_type = 'FOREIGN KEY'
-        ) fk ON c.column_name = fk.column_name
-        WHERE c.table_schema = $1 AND c.table_name = $2
-        ORDER BY c.ordinal_position
-        "#
-    )
-    .bind(&schema)
-    .bind(&table)
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| format!("Failed to list columns: {}", e))?;
 
-    Ok(rows
-        .into_iter()
-        .map(|r| {
-            let is_nullable: Option<String> = r.try_get("is_nullable").ok();
-            ColumnInfo {
-                name: r.try_get("column_name").ok(),
-                data_type: r.try_get("data_type").ok(),
-                is_nullable: is_nullable.as_deref() == Some("YES"),
-                default_value: r.try_get("column_default").ok(),
-                is_primary_key: r.try_get("is_primary_key").unwrap_or(false),
-                is_foreign_key: r.try_get("is_foreign_key").unwrap_or(false),
-            }
-        })
-        .collect())
-}
-
-/// Paginated table data response
-#[derive(serde::Serialize)]
-pub struct TableDataResult {
-    pub columns: Vec<String>,
-    pub rows: Vec<Vec<Option<String>>>,
-    pub total_rows: i64,
-    pub page: i32,
-    pub limit: i32,
+    session.list_columns(&schema, &table).await
 }
 
 /// Get paginated table data
@@ -285,118 +122,21 @@ pub async fn get_table_data(
     filter: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<TableDataResult, String> {
-    let pool = state
+    let session = state
         .get_connection(&connection_id)
         .ok_or("Connection not found")?;
-    
-    let offset = (page - 1) * limit;
-    
-    // Optional WHERE clause from the UI filter box (trusted local DB client).
-    // Reject multi-statement / dangerous fragments.
-    let where_clause = if let Some(ref raw) = filter {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            String::new()
-        } else if trimmed.contains(';') || trimmed.contains("--") || trimmed.contains("/*") {
-            return Err("Filter cannot contain comments or multiple statements".to_string());
-        } else {
-            // Allow "col = 1" or a full "WHERE col = 1"
-            let body = if trimmed.to_lowercase().starts_with("where ") {
-                trimmed[6..].trim()
-            } else {
-                trimmed
-            };
-            format!(" WHERE ({})", body)
-        }
-    } else {
-        String::new()
-    };
-    
-    // Get total row count
-    let count_query = format!(
-        "SELECT COUNT(*) as count FROM \"{}\".\"{}\"{}"
-,
-        schema.replace('"', "\"\""),
-        table.replace('"', "\"\""),
-        where_clause
-    );
-    let count_row: (i64,) = sqlx::query_as(&count_query)
-        .fetch_one(&pool)
+
+    session
+        .get_table_data(
+            &schema,
+            &table,
+            page,
+            limit,
+            sort_column,
+            sort_direction,
+            filter,
+        )
         .await
-        .map_err(|e| format!("Failed to get row count: {}", e))?;
-    let total_rows = count_row.0;
-    
-    // Get column names
-    let columns_query = format!(
-        "SELECT column_name FROM information_schema.columns WHERE table_schema = '{}' AND table_name = '{}' ORDER BY ordinal_position",
-        schema.replace('\'', "''"),
-        table.replace('\'', "''")
-    );
-    let column_rows = sqlx::query(&columns_query)
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| format!("Failed to get columns: {}", e))?;
-    
-    let columns: Vec<String> = column_rows
-        .iter()
-        .map(|r| r.try_get::<String, _>("column_name").unwrap_or_default())
-        .collect();
-    
-    // Build column list with CAST to text for each column
-    let column_casts: Vec<String> = columns
-        .iter()
-        .map(|c| format!("\"{}\"::text", c.replace('"', "\"\"")))
-        .collect();
-    
-    // Build ORDER BY clause if sorting is requested
-    let order_by = if let Some(ref col) = sort_column {
-        // Validate column exists to prevent SQL injection
-        if columns.contains(col) {
-            let direction = match sort_direction.as_deref() {
-                Some("desc") | Some("DESC") => "DESC",
-                _ => "ASC",
-            };
-            format!(" ORDER BY \"{}\" {}", col.replace('"', "\"\""), direction)
-        } else {
-            String::new()
-        }
-    } else {
-        String::new()
-    };
-    
-    // Get actual data - cast all columns to text to avoid type issues
-    let data_query = format!(
-        "SELECT {} FROM \"{}\".\"{}\"{}{} LIMIT {} OFFSET {}",
-        column_casts.join(", "),
-        schema.replace('"', "\"\""),
-        table.replace('"', "\"\""),
-        where_clause,
-        order_by,
-        limit,
-        offset
-    );
-    
-    let data_rows = sqlx::query(&data_query)
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| format!("Failed to fetch data: {}", e))?;
-    
-    let rows: Vec<Vec<Option<String>>> = data_rows
-        .iter()
-        .map(|row| {
-            (0..columns.len())
-                .map(|i| row.try_get::<Option<String>, _>(i).ok().flatten())
-                .collect()
-        })
-        .collect();
-    
-    Ok(TableDataResult {
-        columns,
-        rows,
-        total_rows,
-        page,
-        limit,
-    })
 }
 
 /// Update a single cell in a table
@@ -411,71 +151,20 @@ pub async fn update_row(
     new_value: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<bool, String> {
-    let pool = state
+    let session = state
         .get_connection(&connection_id)
         .ok_or("Connection not found")?;
-    
-    // Look up the target column's data type so we can cast properly
-    let type_query = format!(
-        "SELECT data_type FROM information_schema.columns WHERE table_schema = '{}' AND table_name = '{}' AND column_name = '{}'",
-        schema.replace('\'', "''"),
-        table.replace('\'', "''"),
-        column.replace('\'', "''")
-    );
-    let col_type: Option<String> = sqlx::query_scalar(&type_query)
-        .fetch_optional(&pool)
+
+    session
+        .update_row(
+            &schema,
+            &table,
+            &pk_column,
+            &pk_value,
+            &column,
+            new_value,
+        )
         .await
-        .map_err(|e| format!("Failed to get column type: {}", e))?;
-    
-    let data_type = col_type.unwrap_or_else(|| "text".to_string());
-    
-    // Build UPDATE query:
-    // - Cast PK column to text for reliable comparison with our string parameter
-    // - Cast new value from text to the column's actual data type
-    let set_clause = match new_value {
-        Some(ref _val) => format!(
-            "\"{}\" = $1::{}",
-            column.replace('"', "\"\""),
-            data_type
-        ),
-        None => format!(
-            "\"{}\" = NULL",
-            column.replace('"', "\"\"")
-        ),
-    };
-    
-    let query = format!(
-        "UPDATE \"{}\".\"{}\" SET {} WHERE \"{}\"::text = ${}",
-        schema.replace('"', "\"\""),
-        table.replace('"', "\"\""),
-        set_clause,
-        pk_column.replace('"', "\"\""),
-        if new_value.is_some() { "2" } else { "1" }
-    );
-    
-    let result = match new_value {
-        Some(ref val) => {
-            sqlx::query(&query)
-                .bind(val)
-                .bind(&pk_value)
-                .execute(&pool)
-                .await
-        },
-        None => {
-            sqlx::query(&query)
-                .bind(&pk_value)
-                .execute(&pool)
-                .await
-        }
-    };
-    
-    let affected = result.map_err(|e| format!("Failed to update row: {}", e))?;
-    
-    if affected.rows_affected() == 0 {
-        return Err("No rows were updated. The row may have been deleted.".to_string());
-    }
-    
-    Ok(true)
 }
 
 /// Insert a new row into a table
@@ -488,44 +177,13 @@ pub async fn insert_row(
     values: Vec<Option<String>>,
     state: State<'_, AppState>,
 ) -> Result<bool, String> {
-    let pool = state
+    let session = state
         .get_connection(&connection_id)
         .ok_or("Connection not found")?;
-    
-    if columns.is_empty() || columns.len() != values.len() {
-        return Err("Columns and values must be non-empty and have equal length".to_string());
-    }
-    
-    // Build column list
-    let col_list: Vec<String> = columns
-        .iter()
-        .map(|c| format!("\"{}\"", c.replace('"', "\"\"")))
-        .collect();
-    
-    // Build placeholder list ($1, $2, etc)
-    let placeholders: Vec<String> = (1..=values.len())
-        .map(|i| format!("${}", i))
-        .collect();
-    
-    let query = format!(
-        "INSERT INTO \"{}\".\"{}\" ({}) VALUES ({})",
-        schema.replace('"', "\"\""),
-        table.replace('"', "\"\""),
-        col_list.join(", "),
-        placeholders.join(", ")
-    );
-    
-    let mut query_builder = sqlx::query(&query);
-    for value in &values {
-        query_builder = query_builder.bind(value);
-    }
-    
-    query_builder
-        .execute(&pool)
+
+    session
+        .insert_row(&schema, &table, &columns, &values)
         .await
-        .map_err(|e| format!("Failed to insert row: {}", e))?;
-    
-    Ok(true)
 }
 
 /// Delete rows from a table by primary key values
@@ -538,38 +196,13 @@ pub async fn delete_rows(
     pk_values: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<i32, String> {
-    let pool = state
+    let session = state
         .get_connection(&connection_id)
         .ok_or("Connection not found")?;
-    
-    if pk_values.is_empty() {
-        return Err("No rows specified for deletion".to_string());
-    }
-    
-    // Build placeholder list ($1, $2, etc)
-    let placeholders: Vec<String> = (1..=pk_values.len())
-        .map(|i| format!("${}", i))
-        .collect();
-    
-    let query = format!(
-        "DELETE FROM \"{}\".\"{}\" WHERE \"{}\"::text IN ({})",
-        schema.replace('"', "\"\""),
-        table.replace('"', "\"\""),
-        pk_column.replace('"', "\"\""),
-        placeholders.join(", ")
-    );
-    
-    let mut query_builder = sqlx::query(&query);
-    for pk in &pk_values {
-        query_builder = query_builder.bind(pk);
-    }
-    
-    let result = query_builder
-        .execute(&pool)
+
+    session
+        .delete_rows(&schema, &table, &pk_column, &pk_values)
         .await
-        .map_err(|e| format!("Failed to delete rows: {}", e))?;
-    
-    Ok(result.rows_affected() as i32)
 }
 
 /// Get the path to the saved connections JSON file
@@ -578,51 +211,42 @@ fn get_connections_path(app: &AppHandle) -> Result<PathBuf, String> {
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data directory: {}", e))?;
-    
-    // Ensure the directory exists
+
     fs::create_dir_all(&data_dir)
         .map_err(|e| format!("Failed to create data directory: {}", e))?;
-    
+
     Ok(data_dir.join("connections.json"))
 }
 
 /// Save connection configurations to disk
 #[command]
-pub async fn save_connections(
-    connections_json: String,
-    app: AppHandle,
-) -> Result<bool, String> {
+pub async fn save_connections(connections_json: String, app: AppHandle) -> Result<bool, String> {
     let path = get_connections_path(&app)?;
-    
-    // Validate it's valid JSON before saving
+
     serde_json::from_str::<serde_json::Value>(&connections_json)
         .map_err(|e| format!("Invalid JSON: {}", e))?;
-    
+
     fs::write(&path, &connections_json)
         .map_err(|e| format!("Failed to save connections: {}", e))?;
-    
+
     Ok(true)
 }
 
 /// Load saved connection configurations from disk
 #[command]
-pub async fn load_connections(
-    app: AppHandle,
-) -> Result<String, String> {
+pub async fn load_connections(app: AppHandle) -> Result<String, String> {
     let path = get_connections_path(&app)?;
-    
+
     if !path.exists() {
-        // No saved connections yet, return empty array
         return Ok("[]".to_string());
     }
-    
+
     let content = fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read connections: {}", e))?;
-    
-    // Validate it's valid JSON
+
     serde_json::from_str::<serde_json::Value>(&content)
         .map_err(|e| format!("Invalid saved data: {}", e))?;
-    
+
     Ok(content)
 }
 
@@ -630,27 +254,23 @@ const KEYCHAIN_SERVICE: &str = "OpenRDB-Studio";
 
 /// Save a password to the OS keychain
 #[command]
-pub async fn save_password(
-    connection_id: String,
-    password: String,
-) -> Result<bool, String> {
+pub async fn save_password(connection_id: String, password: String) -> Result<bool, String> {
     let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &connection_id)
         .map_err(|e| format!("Failed to create keychain entry: {}", e))?;
-    
-    entry.set_password(&password)
+
+    entry
+        .set_password(&password)
         .map_err(|e| format!("Failed to save password to keychain: {}", e))?;
-    
+
     Ok(true)
 }
 
 /// Get a password from the OS keychain
 #[command]
-pub async fn get_password(
-    connection_id: String,
-) -> Result<Option<String>, String> {
+pub async fn get_password(connection_id: String) -> Result<Option<String>, String> {
     let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &connection_id)
         .map_err(|e| format!("Failed to create keychain entry: {}", e))?;
-    
+
     match entry.get_password() {
         Ok(password) => Ok(Some(password)),
         Err(keyring::Error::NoEntry) => Ok(None),
@@ -660,15 +280,13 @@ pub async fn get_password(
 
 /// Delete a password from the OS keychain
 #[command]
-pub async fn delete_password(
-    connection_id: String,
-) -> Result<bool, String> {
+pub async fn delete_password(connection_id: String) -> Result<bool, String> {
     let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &connection_id)
         .map_err(|e| format!("Failed to create keychain entry: {}", e))?;
-    
+
     match entry.delete_credential() {
         Ok(()) => Ok(true),
-        Err(keyring::Error::NoEntry) => Ok(true), // Already gone, that's fine
+        Err(keyring::Error::NoEntry) => Ok(true),
         Err(e) => Err(format!("Failed to delete password from keychain: {}", e)),
     }
 }
@@ -679,48 +297,11 @@ pub async fn list_foreign_keys(
     connection_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<ForeignKeyInfo>, String> {
-    let pool = state
+    let session = state
         .get_connection(&connection_id)
         .ok_or("Connection not found")?;
 
-    let rows = sqlx::query(
-        r#"
-        SELECT
-            tc.constraint_name,
-            kcu.table_schema AS from_schema,
-            kcu.table_name AS from_table,
-            kcu.column_name AS from_column,
-            ccu.table_schema AS to_schema,
-            ccu.table_name AS to_table,
-            ccu.column_name AS to_column
-        FROM information_schema.table_constraints AS tc
-        JOIN information_schema.key_column_usage AS kcu
-            ON tc.constraint_name = kcu.constraint_name
-            AND tc.table_schema = kcu.table_schema
-        JOIN information_schema.constraint_column_usage AS ccu
-            ON ccu.constraint_name = tc.constraint_name
-            AND ccu.table_schema = tc.table_schema
-        WHERE tc.constraint_type = 'FOREIGN KEY'
-            AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
-        ORDER BY from_schema, from_table, from_column
-        "#
-    )
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| format!("Failed to list foreign keys: {}", e))?;
-
-    Ok(rows
-        .into_iter()
-        .map(|row| ForeignKeyInfo {
-            constraint_name: row.try_get("constraint_name").unwrap_or_default(),
-            from_schema: row.try_get("from_schema").unwrap_or_default(),
-            from_table: row.try_get("from_table").unwrap_or_default(),
-            from_column: row.try_get("from_column").unwrap_or_default(),
-            to_schema: row.try_get("to_schema").unwrap_or_default(),
-            to_table: row.try_get("to_table").unwrap_or_default(),
-            to_column: row.try_get("to_column").unwrap_or_default(),
-        })
-        .collect())
+    session.list_foreign_keys().await
 }
 
 /// Drain Atlas connect payloads queued by the localhost bridge.

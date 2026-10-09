@@ -1,7 +1,7 @@
 use sqlx::{PgPool, Row, Column};
 use crate::adapters::postgres::models::QueryResult;
 
-fn is_safe_query(sql: &str) -> bool {
+pub(crate) fn is_safe_query(sql: &str) -> bool {
     let normalized = sql
         .trim()
         .trim_start_matches(|c: char| c == '(' || c.is_whitespace())

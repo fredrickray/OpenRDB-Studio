@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { api } from '@/lib/api'
 import type { ConnectionConfig, ConnectionInfo, ConnectionTestResult, DatabaseInfo } from '@/lib/api'
+import { engineDefaults, normalizeEngine, type DatabaseEngine } from '@/lib/engines'
 import { useToastStore } from '@/stores/toastStore'
 import { friendlyDbError } from '@/lib/errors'
 
@@ -13,8 +14,9 @@ export interface Connection {
     port: number
     username: string
     password: string
-    /** Last-used / preferred database (optional; listing uses postgres bootstrap) */
+    /** Last-used / preferred database. Listing uses the engine's maintenance database. */
     database: string
+    engine: DatabaseEngine
     sslRequired: boolean
     readOnly: boolean
     color: ConnectionColor
@@ -39,6 +41,7 @@ interface SavedConnection {
     port: number
     username: string
     database: string
+    engine?: DatabaseEngine
     sslRequired: boolean
     readOnly: boolean
     color: ConnectionColor
@@ -86,10 +89,11 @@ interface ConnectionStore {
 }
 
 function toConnectionConfig(conn: Connection, databaseOverride?: string): ConnectionConfig {
+    const engine = conn.engine ?? 'postgres'
     const database =
         (databaseOverride && databaseOverride.trim()) ||
         conn.database?.trim() ||
-        'postgres'
+        engineDefaults(engine).database
 
     return {
         host: conn.host,
@@ -98,6 +102,7 @@ function toConnectionConfig(conn: Connection, databaseOverride?: string): Connec
         password: conn.password,
         database,
         ssl_required: conn.sslRequired,
+        engine,
     }
 }
 
@@ -109,6 +114,7 @@ function toSavedConnection(conn: Connection): SavedConnection {
         port: conn.port,
         username: conn.username,
         database: conn.database,
+        engine: conn.engine ?? 'postgres',
         sslRequired: conn.sslRequired,
         readOnly: conn.readOnly,
         color: conn.color === 'none' ? 'blue' : conn.color,
@@ -172,6 +178,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
                     }
                     return {
                         ...s,
+                        engine: normalizeEngine(s.engine),
                         color: s.color || 'blue',
                         favorite: s.favorite ?? false,
                         password,
@@ -195,6 +202,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
         const newConn: Connection = {
             ...conn,
             id,
+            engine: normalizeEngine(conn.engine),
             status: conn.status || 'disconnected',
             favorite: conn.favorite ?? false,
             color: conn.color || 'blue',
@@ -236,6 +244,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
             username: payload.username,
             password: payload.password,
             database: payload.database,
+            engine: 'postgres',
             sslRequired: payload.sslRequired,
             readOnly: false,
             color: 'blue',
@@ -259,6 +268,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
                 updates.username !== undefined ||
                 updates.password !== undefined ||
                 updates.database !== undefined ||
+                updates.engine !== undefined ||
                 updates.sslRequired !== undefined ||
                 updates.readOnly !== undefined ||
                 updates.color !== undefined ||
@@ -379,7 +389,10 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
         const connection = get().connections.find((c) => c.id === id)
         if (!connection) return null
 
-        const targetDb = databaseName?.trim() || connection.database?.trim() || 'postgres'
+        const targetDb =
+            databaseName?.trim() ||
+            connection.database?.trim() ||
+            engineDefaults(connection.engine).database
 
         // Disconnect previous pool if switching DB on same connection
         if (connection.backendId) {
@@ -484,7 +497,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
         }))
 
         try {
-            const databases = await api.listDatabases(toConnectionConfig(connection, 'postgres'))
+            const databases = await api.listDatabases(toConnectionConfig(connection))
             set((state) => ({
                 connections: state.connections.map((c) =>
                     c.id === id
@@ -517,7 +530,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
         }
 
         try {
-            await api.createDatabase(toConnectionConfig(connection, 'postgres'), name.trim())
+            await api.createDatabase(toConnectionConfig(connection), name.trim())
             await get().refreshDatabases(id)
             useToastStore.getState().showToast(`Database “${name.trim()}” created`, 'success')
             return { success: true }
