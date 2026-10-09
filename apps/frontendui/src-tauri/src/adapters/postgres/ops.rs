@@ -3,13 +3,12 @@ use sqlx::Row;
 use crate::adapters::models::{
     ColumnInfo, ConnectionConfig, ConnectionTestResult, DatabaseInfo, ForeignKeyInfo, TableDataResult,
 };
-use crate::adapters::postgres::connection::{connection_string, create_pool, PgPool, MAINTENANCE_DATABASE};
+use crate::adapters::postgres::connection::{create_pool, PgPool, MAINTENANCE_DATABASE};
 
 pub async fn test_connection(config: &ConnectionConfig) -> Result<ConnectionTestResult, String> {
-    let connection_string = connection_string(config);
     let expected_db = config.database.clone();
 
-    match create_pool(&connection_string).await {
+    match create_pool(config).await {
         Ok(pool) => {
             // Verify we can query and that we're connected to the expected database.
             // This ensures the database exists and we have access.
@@ -57,7 +56,7 @@ pub async fn list_databases(config: &ConnectionConfig) -> Result<Vec<DatabaseInf
     let mut config_for_listing = config.clone();
     config_for_listing.database = MAINTENANCE_DATABASE.to_string();
 
-    let pool = create_pool(&connection_string(&config_for_listing)).await?;
+    let pool = create_pool(&config_for_listing).await?;
 
     let rows = sqlx::query(
         r#"
@@ -97,7 +96,7 @@ pub async fn create_database(config: &ConnectionConfig, name: &str) -> Result<bo
     let mut config_for_create = config.clone();
     config_for_create.database = MAINTENANCE_DATABASE.to_string();
 
-    let pool = create_pool(&connection_string(&config_for_create)).await?;
+    let pool = create_pool(&config_for_create).await?;
 
     let query = format!("CREATE DATABASE \"{}\"", trimmed.replace('"', "\"\""));
     sqlx::query(&query)
@@ -110,7 +109,7 @@ pub async fn create_database(config: &ConnectionConfig, name: &str) -> Result<bo
 
 /// Open a pool and verify it with `SELECT 1` before it is stored.
 pub async fn connect(config: &ConnectionConfig) -> Result<PgPool, String> {
-    let pool = create_pool(&connection_string(config)).await?;
+    let pool = create_pool(config).await?;
 
     sqlx::query("SELECT 1")
         .fetch_one(&pool)
