@@ -1,17 +1,14 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, RwLock};
-use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 use chrono::Utc;
-use crate::adapters::postgres::{ConnectionConfig, ConnectionInfo};
+use crate::adapters::{ConnectionConfig, ConnectionInfo, DbSession};
 use crate::bridge::AtlasConnectPayload;
-
-pub type PgPool = Pool<Postgres>;
 
 /// Application state holding active database connections
 pub struct AppState {
-    /// Map of connection ID to pool
-    pub connections: RwLock<HashMap<String, PgPool>>,
+    /// Map of connection ID to an engine-specific session
+    pub connections: RwLock<HashMap<String, DbSession>>,
     /// Map of connection ID to info
     pub connection_info: RwLock<HashMap<String, ConnectionInfo>>,
     /// Atlas → Studio connect requests waiting for the UI to consume
@@ -36,7 +33,7 @@ impl AppState {
     }
 
     /// Add a new connection and return its ID
-    pub fn add_connection(&self, pool: PgPool, config: &ConnectionConfig) -> String {
+    pub fn add_connection(&self, session: DbSession, config: &ConnectionConfig) -> String {
         let id = Uuid::new_v4().to_string();
         let info = ConnectionInfo {
             id: id.clone(),
@@ -45,15 +42,16 @@ impl AppState {
             database: config.database.clone(),
             username: config.username.clone(),
             connected_at: Utc::now().to_rfc3339(),
+            engine: config.engine,
         };
 
-        self.connections.write().unwrap().insert(id.clone(), pool);
+        self.connections.write().unwrap().insert(id.clone(), session);
         self.connection_info.write().unwrap().insert(id.clone(), info);
         id
     }
 
-    /// Get a connection pool by ID
-    pub fn get_connection(&self, id: &str) -> Option<PgPool> {
+    /// Get a live session by ID
+    pub fn get_connection(&self, id: &str) -> Option<DbSession> {
         self.connections.read().unwrap().get(id).cloned()
     }
 

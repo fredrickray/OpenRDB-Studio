@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useConnectionStore, type Connection } from "@/stores/connectionStore"
+import { engineDefaults } from "@/lib/engines"
 import { useTableStore } from "@/stores/tableStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -94,7 +95,9 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
             const result = await testConnection(connection.id)
             if (result.success) {
                 setTestStatus("success")
-                setTestMessage(`Connected! Server: ${result.server_version || "PostgreSQL"}`)
+                setTestMessage(
+                    `Connected! Server: ${result.server_version || engineDefaults(connection.engine).label}`
+                )
             } else {
                 setTestStatus("error")
                 setTestMessage(result.message || "Connection failed")
@@ -130,7 +133,7 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
             connection.activeDatabase ||
             connection.database ||
             databases[0]?.name ||
-            "postgres"
+            engineDefaults(connection.engine).database
         await handleOpenDatabase(target)
     }
 
@@ -144,7 +147,7 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
                     <div className="flex-1 min-w-0">
                         <h2 className="text-2xl font-semibold truncate">{connection.name}</h2>
                         <p className="text-sm text-muted-foreground">
-                            {connection.host}:{connection.port} · PostgreSQL server connection
+                            {connection.host}:{connection.port} · {engineDefaults(connection.engine).label} server connection
                         </p>
                     </div>
                     <Button variant="outline" size="sm" onClick={() => openModal(connection)}>
@@ -179,7 +182,10 @@ export function ConnectionEditForm({ connection }: ConnectionEditFormProps) {
                                 type="number"
                                 value={formData.port}
                                 onChange={(e) =>
-                                    setFormData({ ...formData, port: parseInt(e.target.value) || 5432 })
+                                    setFormData({
+                                        ...formData,
+                                        port: parseInt(e.target.value) || engineDefaults(connection.engine).port,
+                                    })
                                 }
                                 onBlur={persistForm}
                                 className="bg-input"

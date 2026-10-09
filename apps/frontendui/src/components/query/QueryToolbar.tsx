@@ -4,7 +4,7 @@ import { useQueryStore } from "@/stores/queryStore"
 import { useToastStore } from "@/stores/toastStore"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { formatSql } from '@/lib/formatSql'
+import { formatSqlForActiveConnection } from '@/lib/formatSql'
 import { saveQueryLocally } from '@/lib/savedQueries'
 
 function escapeCsv(value: string | null): string {
@@ -43,7 +43,7 @@ export function QueryToolbar() {
     const handleFormat = () => {
         if (!activeTabId || !activeTab?.sql.trim()) return
         try {
-            const formatted = formatSql(activeTab.sql)
+            const formatted = formatSqlForActiveConnection(activeTab.sql)
             updateSql(activeTabId, formatted)
             showToast('SQL formatted', 'success')
         } catch (error) {

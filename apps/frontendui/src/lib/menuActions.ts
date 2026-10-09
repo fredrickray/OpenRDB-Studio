@@ -1,5 +1,5 @@
 import type { NavigateFunction } from 'react-router-dom'
-import { formatSql } from '@/lib/formatSql'
+import { formatSqlForActiveConnection } from '@/lib/formatSql'
 import { saveQueryLocally } from '@/lib/savedQueries'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { useQueryStore } from '@/stores/queryStore'
@@ -97,7 +97,7 @@ export function handleMenuAction(action: MenuAction, navigate: NavigateFunction)
                 break
             }
             try {
-                updateSql(activeTabId, formatSql(tab.sql))
+                updateSql(activeTabId, formatSqlForActiveConnection(tab.sql))
                 showToast('SQL formatted', 'success')
             } catch (error) {
                 showToast(
