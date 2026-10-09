@@ -19,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { AlertCircle, Loader2, Trash2, AlertTriangle } from "lucide-react"
 import { buildConnectionUri, parseConnectionUri } from "@/lib/pgUri"
 import { api } from "@/lib/api"
+import { friendlyDbError } from "@/lib/errors"
 
 const COLORS: { value: ConnectionColor; label: string; className: string }[] = [
     { value: "none", label: "No Color", className: "bg-muted" },
@@ -264,7 +265,7 @@ export function ConnectionModal() {
                 engine: fields.engine,
             })
             if (!test.success) {
-                throw new Error(test.message)
+                throw new Error(friendlyDbError(test.message))
             }
 
             setExpanded(id, true)
@@ -285,7 +286,7 @@ export function ConnectionModal() {
             setActiveConnection(id)
             closeModal()
         } catch (e) {
-            setError(e instanceof Error ? e.message : "Failed to connect")
+            setError(friendlyDbError(e instanceof Error ? e.message : "Failed to connect"))
         } finally {
             setIsConnecting(false)
         }

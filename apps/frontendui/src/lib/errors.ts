@@ -18,8 +18,11 @@ export function friendlyDbError(raw: string): string {
     if (lower.includes('connection refused') || lower.includes('could not connect')) {
         return 'Could not reach the database server. Check host and port.'
     }
-    if (lower.includes('password authentication failed')) {
-        return 'Authentication failed — check username and password.'
+    if (lower.includes('access denied') || lower.includes('1045') || lower.includes('password authentication failed')) {
+        if (lower.includes('using password: no')) {
+            return 'Access denied. No password was sent. Put it in the URI, for example mysql://user:password@host:3306/.'
+        }
+        return 'Access denied. Check the username and password.'
     }
     if (lower.includes('does not exist') && lower.includes('database')) {
         return 'Database does not exist.'

@@ -4,12 +4,12 @@ use crate::adapters::models::{
     ColumnInfo, ConnectionConfig, ConnectionTestResult, DatabaseInfo, ForeignKeyInfo, TableDataResult,
     TableInfo,
 };
-use crate::adapters::mysql::connection::{connection_string, create_pool, MySqlPool, MAINTENANCE_DATABASE};
+use crate::adapters::mysql::connection::{create_pool, MySqlPool, MAINTENANCE_DATABASE};
 
 pub async fn test_connection(config: &ConnectionConfig) -> Result<ConnectionTestResult, String> {
     let expected_db = config.database.clone();
 
-    match create_pool(&connection_string(config)).await {
+    match create_pool(config).await {
         Ok(pool) => match sqlx::query("SELECT DATABASE(), VERSION()")
             .fetch_one(&pool)
             .await
@@ -59,7 +59,7 @@ pub async fn list_databases(config: &ConnectionConfig) -> Result<Vec<DatabaseInf
     let mut config_for_listing = config.clone();
     config_for_listing.database = MAINTENANCE_DATABASE.to_string();
 
-    let pool = create_pool(&connection_string(&config_for_listing)).await?;
+    let pool = create_pool(&config_for_listing).await?;
 
     let rows = sqlx::query(
         r#"
@@ -95,7 +95,7 @@ pub async fn create_database(config: &ConnectionConfig, name: &str) -> Result<bo
 
     let mut config_for_create = config.clone();
     config_for_create.database = MAINTENANCE_DATABASE.to_string();
-    let pool = create_pool(&connection_string(&config_for_create)).await?;
+    let pool = create_pool(&config_for_create).await?;
 
     let query = format!("CREATE DATABASE {}", quote_ident(trimmed));
     sqlx::query(&query)
@@ -107,7 +107,7 @@ pub async fn create_database(config: &ConnectionConfig, name: &str) -> Result<bo
 }
 
 pub async fn connect(config: &ConnectionConfig) -> Result<MySqlPool, String> {
-    let pool = create_pool(&connection_string(config)).await?;
+    let pool = create_pool(config).await?;
     sqlx::query("SELECT 1")
         .fetch_one(&pool)
         .await
